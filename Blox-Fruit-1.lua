@@ -691,218 +691,164 @@ end)
 
 registerRight("Home", function(scroll) end)
 registerRight("Settings", function(scroll) end)
---===== UFO HUB X • Home – Level Farm (FIXED VERSION) =====
-if sethiddenproperty then
-    sethiddenproperty(game.Players.LocalPlayer,"SimulationRadius",math.huge)
-end
+--===== UFO HUB X • Home Tab - Farm Level (Model A V1 + AA1 Logic) =====
 
 registerRight("Home", function(scroll)
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local LP = Players.LocalPlayer
+    local RunService = game:GetService("RunService")
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
 
--- ===== TARGET =====  
-local HOLD_POS = Vector3.new(1192.798, 35.068, 1615.625)  
-
--- ===== FLY =====  
-local FLY_SPEED = 130  
-local ARRIVE_DIST = 1.2  
-
--- ===== PULL CONFIG =====  
-local PULL_TIME = 0.25  
-local CLUSTER_RADIUS = 1.35  
-local CLUSTER_STEP   = 0.75  
-local ZERO_VEL = true  
-
--- ===== THEME =====  
-local THEME = {  
-    GREEN = Color3.fromRGB(25,255,125),  
-    RED   = Color3.fromRGB(255,40,40),  
-    WHITE = Color3.fromRGB(255,255,255),  
-    BLACK = Color3.fromRGB(0,0,0),  
-}  
-
-local function corner(ui,r)  
-    local c = Instance.new("UICorner")  
-    c.CornerRadius = UDim.new(0, r or 12)  
-    c.Parent = ui  
-end  
-
-local function stroke(ui,t,col)  
-    local s = Instance.new("UIStroke")  
-    s.Thickness = t or 2.2  
-    s.Color = col or THEME.GREEN  
-    s.Parent = ui  
-end  
-
--- ===== CLEANUP =====  
-for _,n in ipairs({"LF_Header","LF_Row1"}) do  
-    local o = scroll:FindFirstChild(n)  
-    if o then o:Destroy() end  
-end  
-
-local list = scroll:FindFirstChildOfClass("UIListLayout")  
-if not list then  
-    list = Instance.new("UIListLayout", scroll)  
-    list.Padding = UDim.new(0,12)  
-    list.SortOrder = Enum.SortOrder.LayoutOrder  
-end  
-scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y  
-
-local base = 0  
-for _,c in ipairs(scroll:GetChildren()) do  
-    if c:IsA("GuiObject") and c ~= list then  
-        base = math.max(base, c.LayoutOrder or 0)  
-    end  
-end  
-
--- ===== HEADER =====  
-local header = Instance.new("TextLabel")  
-header.Name = "LF_Header"  
-header.Parent = scroll  
-header.Size = UDim2.new(1,0,0,36)  
-header.BackgroundTransparency = 1  
-header.Font = Enum.Font.GothamBold  
-header.TextSize = 16  
-header.TextColor3 = THEME.WHITE  
-header.TextXAlignment = Enum.TextXAlignment.Left  
-header.Text = "Level Farm ⚔️"  
-header.LayoutOrder = base + 1  
-
--- ===== HELPERS =====  
-local function getChar()  
-    local ch = LP.Character  
-    if not ch then return end  
-    local hum = ch:FindFirstChildOfClass("Humanoid")  
-    local hrp = ch:FindFirstChild("HumanoidRootPart")  
-    if hum and hrp and hum.Health > 0 then return ch, hum, hrp end  
-end  
-
-local function equipCombat()  
-    local ch, hum = getChar()  
-    local bp = LP:FindFirstChildOfClass("Backpack")  
-    if not (ch and hum and bp) then return end  
-    if ch:FindFirstChild("Combat") then return end  
-    local tool = bp:FindFirstChild("Combat")  
-    if tool then pcall(function() hum:EquipTool(tool) end) end  
-end  
-
-local function startQuest()  
-    pcall(function()  
-        ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("StartQuest","BanditQuest1",1)  
-    end)  
-end  
-
--- ===== NO CLIP =====  
-local noclipOn = false  
-local noclipConn  
-enableNoClip = function()  
-    noclipOn = true  
-    noclipConn = RunService.Stepped:Connect(function()  
-        if not noclipOn then return end  
-        local ch = LP.Character  
-        if ch then  
-            for _,d in ipairs(ch:GetDescendants()) do  
-                if d:IsA("BasePart") then d.CanCollide = false end  
-            end  
-        end  
-    end)  
-end  
-
--- ===== MAIN FARM LOGIC =====  
-local ENABLED = false  
-local arrived = false  
-
-local function applyTargetHack(v, y) -- v = Bandit, y = LocalPlayer
-    if v:FindFirstChild("HumanoidRootPart") and y:FindFirstChild("HumanoidRootPart") then
-        -- ชุดคำสั่งที่คุณต้องการให้ใช้เป๊ะๆ:
-        v.HumanoidRootPart.CFrame = y.HumanoidRootPart.CFrame
-        v.HumanoidRootPart.Size = Vector3.new(60,60,60)
-        y.HumanoidRootPart.Size = Vector3.new(60,60,60)
-        v.HumanoidRootPart.Transparency = 1
-        v.HumanoidRootPart.CanCollide = false
-        y.HumanoidRootPart.CanCollide = false
-        v.Humanoid.WalkSpeed = 0
-        y.Humanoid.WalkSpeed = 0
-        v.Humanoid.JumpPower = 0
-        y.Humanoid.JumpPower = 0
-    end
-end
-
-RunService.Heartbeat:Connect(function(dt)  
-    if not ENABLED then return end  
-    local ch, hum, hrp = getChar()  
-    if not (ch and hrp) then return end  
-
-    -- 1. บินไปจุดฟาร์ม
-    if not arrived then  
-        local dist = (HOLD_POS - hrp.Position).Magnitude  
-        if dist <= ARRIVE_DIST then  
-            arrived = true  
-        else  
-            hrp.CFrame = CFrame.new(hrp.Position + (HOLD_POS - hrp.Position).Unit * (FLY_SPEED * dt))  
-            hrp.AssemblyLinearVelocity = Vector3.zero  
-            return  
-        end  
-    end  
-
-    -- 2. เมื่อถึงจุดฟาร์ม
-    hrp.CFrame = CFrame.new(HOLD_POS)  
-    hrp.AssemblyLinearVelocity = Vector3.zero  
-    equipCombat()  
+    ------------------------------------------------------------------------
+    -- AA1 SYSTEM SETTING (ระบบหลังบ้านของ Farm Level)
+    ------------------------------------------------------------------------
+    local SYSTEM_NAME = "FarmLevelDuck"
+    local SAVE = (getgenv and getgenv().UFOX_SAVE) or {
+        get = function(_, _, d) return d end,
+        set = function() end
+    }
     
-    local pg = LP:FindFirstChild("PlayerGui")  
-    if pg and pg:FindFirstChild("Main") and not pg.Main.Quest.Visible then startQuest() end  
+    local SCOPE = ("AA1/%s/%d/%d"):format(SYSTEM_NAME, game.GameId, game.PlaceId)
+    local function SaveGet(k, d) return SAVE.get(SCOPE.."/"..k, d) end
+    local function SaveSet(k, v) SAVE.set(SCOPE.."/"..k, v) end
 
-    -- 3. ตรวจสอบมอนสเตอร์และใช้คำสั่งที่คุณให้มา (จุดเดียว)
-    local enemies = workspace:FindFirstChild("Enemies")  
-    if enemies then  
-        for _, mob in ipairs(enemies:GetChildren()) do  
-            if mob.Name == "Bandit" and mob:FindFirstChild("Humanoid") and mob.Humanoid.Health > 0 then  
-                applyTargetHack(mob, ch)  
-            end  
-        end  
-    end  
-end)  
+    local STATE = {
+        AutoFarm = SaveGet("AutoFarm", false)
+    }
 
--- ===== UI ROW =====  
-local row = Instance.new("Frame")  
-row.Name = "LF_Row1"  
-row.Parent = scroll  
-row.Size = UDim2.new(1,-6,0,46)  
-row.BackgroundColor3 = THEME.BLACK  
-corner(row,12) stroke(row,2.2,THEME.GREEN)  
-row.LayoutOrder = base + 2  
+    ------------------------------------------------------------------------
+    -- LOGIC: ระบบถือหมัด Combat ตลอดเวลา
+    ------------------------------------------------------------------------
+    local function applyFarmLogic()
+        -- ใช้ spawn หรือ task.spawn เพื่อไม่ให้ loop ไปขัดจังหวะ UI
+        task.spawn(function()
+            while STATE.AutoFarm do
+                local char = LocalPlayer.Character
+                local backpack = LocalPlayer:FindFirstChild("Backpack")
+                
+                if char and backpack then
+                    -- เช็คว่า Combat อยู่ใน Backpack หรือไม่ (ถ้าอยู่แปลว่ายังไม่ได้ถือ)
+                    local tool = backpack:FindFirstChild("Combat")
+                    if tool then
+                        -- ถ้าเจอใน Backpack ให้หยิบมาถือทันที
+                        char.Humanoid:EquipTool(tool)
+                        -- print("[MAX] Combat Equipped from Backpack!")
+                    end
+                end
+                task.wait(0.5) -- เช็คทุกๆ 0.5 วินาทีเพื่อความลื่นไหล
+            end
+        end)
+    end
 
-local lab = Instance.new("TextLabel", row)  
-lab.BackgroundTransparency = 1 lab.Position = UDim2.new(0,16,0,0)  
-lab.Size = UDim2.new(1,-160,1,0) lab.Font = Enum.Font.GothamBold  
-lab.TextSize = 13 lab.TextColor3 = THEME.WHITE  
-lab.TextXAlignment = Enum.TextXAlignment.Left lab.Text = "Auto Level Farm (Hitbox 60)"  
+    ------------------------------------------------------------------------
+    -- UI CONSTRUCTION (Model A V1 Style)
+    ------------------------------------------------------------------------
+    local THEME = {
+        GREEN = Color3.fromRGB(25,255,125),
+        RED   = Color3.fromRGB(255,40,40),
+        WHITE = Color3.fromRGB(255,255,255),
+        BLACK = Color3.fromRGB(0,0,0),
+    }
 
-local sw = Instance.new("Frame", row)  
-sw.AnchorPoint = Vector2.new(1,0.5) sw.Position = UDim2.new(1,-12,0.5,0)  
-sw.Size = UDim2.fromOffset(52,26) sw.BackgroundColor3 = THEME.BLACK corner(sw,13)  
-local st = Instance.new("UIStroke", sw) st.Thickness = 1.8 st.Color = THEME.RED  
+    local function corner(ui, r)
+        local c = Instance.new("UICorner")
+        c.CornerRadius = UDim.new(0, r or 12)
+        c.Parent = ui
+    end
 
-local knob = Instance.new("Frame", sw)  
-knob.Size = UDim2.fromOffset(22,22) knob.Position = UDim2.new(0,2,0.5,-11)  
-knob.BackgroundColor3 = THEME.WHITE corner(knob,11)  
+    local function stroke(ui, th, col)
+        local s = Instance.new("UIStroke")
+        s.Thickness = th or 2.2
+        s.Color = col or THEME.GREEN
+        s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        s.Parent = ui
+    end
 
-local btn = Instance.new("TextButton", sw)  
-btn.Size = UDim2.fromScale(1,1) btn.BackgroundTransparency = 1 btn.Text = ""  
+    -- Header: Farm level 🦆
+    local header = Instance.new("TextLabel")
+    header.Name = "A_Header"
+    header.Parent = scroll
+    header.BackgroundTransparency = 1
+    header.Size = UDim2.new(1, 0, 0, 36)
+    header.Font = Enum.Font.GothamBold
+    header.TextSize = 16
+    header.TextColor3 = THEME.WHITE
+    header.TextXAlignment = Enum.TextXAlignment.Left
+    header.Text = "Farm level 🦆" -- ชื่อภาษาอังกฤษพร้อมอิโมจิเป็ดตามสั่ง
+    header.LayoutOrder = 1
 
-btn.MouseButton1Click:Connect(function()  
-    ENABLED = not ENABLED  
-    arrived = false  
-    st.Color = ENABLED and THEME.GREEN or THEME.RED  
-    knob:TweenPosition(UDim2.new(ENABLED and 1 or 0, ENABLED and -24 or 2, 0.5, -11), "Out", "Quad", 0.08, true)  
-    if ENABLED then enableNoClip() else noclipOn = false if noclipConn then noclipConn:Disconnect() end end  
-end)  
+    -- รายการที่ 1: Farm level auto (Switch)
+    local function makeFarmSwitch(name, order, labelText)
+        local row = Instance.new("Frame")
+        row.Name = name
+        row.Parent = scroll
+        row.Size = UDim2.new(1, -6, 0, 46)
+        row.BackgroundColor3 = THEME.BLACK
+        row.LayoutOrder = order
+        corner(row, 12)
+        stroke(row, 2.2, THEME.GREEN)
 
+        local lab = Instance.new("TextLabel")
+        lab.Parent = row
+        lab.BackgroundTransparency = 1
+        lab.Size = UDim2.new(1, -160, 1, 0)
+        lab.Position = UDim2.new(0, 16, 0, 0)
+        lab.Font = Enum.Font.GothamBold
+        lab.TextSize = 13
+        lab.TextColor3 = THEME.WHITE
+        lab.TextXAlignment = Enum.TextXAlignment.Left
+        lab.Text = labelText
+
+        -- สวิตช์
+        local sw = Instance.new("Frame")
+        sw.Parent = row
+        sw.AnchorPoint = Vector2.new(1, 0.5)
+        sw.Position = UDim2.new(1, -12, 0.5, 0)
+        sw.Size = UDim2.fromOffset(52, 26)
+        sw.BackgroundColor3 = THEME.BLACK
+        corner(sw, 13)
+
+        local swStroke = Instance.new("UIStroke")
+        swStroke.Parent = sw
+        swStroke.Thickness = 1.8
+
+        local knob = Instance.new("Frame")
+        knob.Parent = sw
+        knob.Size = UDim2.fromOffset(22, 22)
+        knob.BackgroundColor3 = THEME.WHITE
+        knob.Position = UDim2.new(0, 2, 0.5, -11)
+        corner(knob, 11)
+
+        local function updateVisual(on)
+            swStroke.Color = on and THEME.GREEN or THEME.RED
+            game:GetService("TweenService"):Create(knob, TweenInfo.new(0.1), {
+                Position = UDim2.new(on and 1 or 0, on and -24 or 2, 0.5, -11)
+            }):Play()
+        end
+
+        local btn = Instance.new("TextButton")
+        btn.Parent = sw
+        btn.BackgroundTransparency = 1
+        btn.Size = UDim2.fromScale(1, 1)
+        btn.Text = ""
+
+        btn.MouseButton1Click:Connect(function()
+            STATE.AutoFarm = not STATE.AutoFarm
+            SaveSet("AutoFarm", STATE.AutoFarm)
+            updateVisual(STATE.AutoFarm)
+            if STATE.AutoFarm then applyFarmLogic() end
+        end)
+
+        updateVisual(STATE.AutoFarm)
+    end
+
+    -- เรียกใช้ฟังก์ชันสร้าง Row
+    makeFarmSwitch("FarmLevelAutoRow", 2, "Farm level auto")
+
+    -- AA1: รันทันทีถ้าเคยเปิดค้างไว้
+    if STATE.AutoFarm then
+        task.defer(applyFarmLogic)
+    end
 end)
-
 --===== UFO HUB X • SETTINGS — Smoother 🚀 (A V1 • fixed 3 rows) + Runner Save (per-map) + AA1 =====
 registerRight("Settings", function(scroll)
     local TweenService = game:GetService("TweenService")
