@@ -691,14 +691,15 @@ end)
 
 registerRight("Home", function(scroll) end)
 registerRight("Settings", function(scroll) end)
---===== UFO HUB X • Home – Level Farm (Equip Combat + Auto Quest + Fly & Hover) (Model A V1) =====
+--===== UFO HUB X • Home – Level Farm (Equip Combat + Auto Quest + Fly Only) (Model A V1) =====
 -- Header : "Level Farm ⚔️"
 -- Row 1  : "Auto Level Farm"
 -- Logic  :
 --   • Equip Combat อัตโนมัติ
 --   • ถ้า Quest UI หาย (Visible = false) → รับภารกิจใหม่ (BanditQuest1)
 --   • บินไปจุดที่กำหนดแบบ “ไม่วาร์ป” (ค่อยๆลอยไป)
---   • ถึงแล้วลอยค้างนิ่ง ไม่ตก ไม่ไหล
+--   • “โหมดลอย/นิ่ง” ใช้เฉพาะตอนบินเท่านั้น
+--   • ถึงจุดแล้ว → คืนสภาพปกติ 100% ทันที
 
 registerRight("Home", function(scroll)
     local Players = game:GetService("Players")
@@ -809,9 +810,7 @@ registerRight("Home", function(scroll)
         local pg = LP:FindFirstChild("PlayerGui")
         local main = pg and pg:FindFirstChild("Main")
         local quest = main and main:FindFirstChild("Quest")
-        if quest then
-            return quest.Visible
-        end
+        if quest then return quest.Visible end
         return false
     end
 
@@ -824,14 +823,16 @@ registerRight("Home", function(scroll)
         end)
     end
 
-    -- ===== FLY + HOVER (NO WARP) =====
-    local anchorPart -- invisible anchor in workspace
+    -- ===== FLY (NO WARP) + TEMP HOLD ONLY WHILE FLYING =====
+    local anchorPart
     local holdOn = false
+    local flyActive = false
+    local arrived = false
 
     local function ensureAnchor()
         if anchorPart and anchorPart.Parent then return anchorPart end
         local p = Instance.new("Part")
-        p.Name = "UFOX_LF_HoldAnchor"
+        p.Name = "UFOX_LF_FlyAnchor"
         p.Anchored = true
         p.CanCollide = false
         p.CanTouch = false
@@ -843,8 +844,10 @@ registerRight("Home", function(scroll)
         return p
     end
 
-    local function clearHold()
+    local function clearHoldAndRestoreNormal()
         holdOn = false
+        flyActive = false
+
         local ch, hum, hrp = getChar()
         if ch then
             for _,name in ipairs({"UFOX_LF_Att0","UFOX_LF_Att1","UFOX_LF_AP","UFOX_LF_AO"}) do
@@ -856,13 +859,17 @@ registerRight("Home", function(scroll)
             hum.PlatformStand = false
             hum.AutoRotate = true
         end
+        if hrp then
+            hrp.AssemblyLinearVelocity = Vector3.zero
+            hrp.AssemblyAngularVelocity = Vector3.zero
+        end
         if anchorPart then
             anchorPart:Destroy()
             anchorPart = nil
         end
     end
 
-    local function applyHoldAtCurrent()
+    local function applyTempHoldForFlight()
         local ch, hum, hrp = getChar()
         if not (ch and hum and hrp) then return end
 
@@ -875,7 +882,7 @@ registerRight("Home", function(scroll)
             if obj then obj:Destroy() end
         end
 
-        -- make stable in-air
+        -- only during flight
         pcall(function()
             hum.Sit = false
             hum.PlatformStand = true
@@ -916,21 +923,34 @@ registerRight("Home", function(scroll)
         ao.Parent = hrp
 
         holdOn = true
+        flyActive = true
+        arrived = false
     end
 
-    -- Smooth flight: move anchor toward target each tick (HRP follows via AlignPosition)
-    local FLY_SPEED = 65 -- studs/sec (ปรับได้)
-    local ARRIVE_DIST = 1.2
+    local FLY_SPEED = 65      -- studs/sec
+    local ARRIVE_DIST = 1.2   -- studs
 
     local function flyStep(dt)
+        if not flyActive then return end
         if not holdOn then return end
         if not (anchorPart and anchorPart.Parent) then return end
 
         local cur = anchorPart.Position
         local to = HOLD_POS - cur
         local dist = to.Magnitude
+
         if dist <= ARRIVE_DIST then
+            -- snap anchor only (ไม่แตะ HRP โดยตรง) แล้ว “ปล่อย” ให้ปกติ
             anchorPart.Position = HOLD_POS
+            if not arrived then
+                arrived = true
+                -- ปล่อยหลังจากเฟรมนี้ เพื่อให้ HRP ตามมาทัน
+                task.defer(function()
+                    if arrived then
+                        clearHoldAndRestoreNormal()
+                    end
+                end)
+            end
             return
         end
 
@@ -947,16 +967,14 @@ registerRight("Home", function(scroll)
     local function tick(dt)
         if not ENABLED then return end
 
-        -- ทำให้ “บินค่อยๆไป” ตลอดเวลา (ไม่วาร์ป)
+        -- บินเฉพาะช่วงแรก จนกว่าจะถึง แล้วจะคืนปกติเอง
         flyStep(dt)
 
-        -- ระบบฟาร์ม/เควส ใช้ interval กันสแปม
         local now = os.clock()
         if now - last < INTERVAL then return end
         last = now
 
         equipCombat()
-
         if not questVisible() then
             startQuest()
         end
@@ -968,21 +986,24 @@ registerRight("Home", function(scroll)
 
         if ENABLED then
             last = 0
-            applyHoldAtCurrent() -- เริ่มล็อกก่อน แล้วค่อย “บิน”
+            -- เริ่ม “บิน” ทันทีตอนเปิด (ไม่วาร์ป)
+            applyTempHoldForFlight()
             conn = RunService.Heartbeat:Connect(function(dt)
                 tick(dt)
             end)
         else
-            clearHold()
+            arrived = false
+            clearHoldAndRestoreNormal()
         end
     end
 
-    -- กันตาย/รีเกิดแล้วค้างไม่พัง
+    -- รีเกิดแล้วให้บินใหม่ (และปล่อยปกติเมื่อถึง)
     LP.CharacterAdded:Connect(function()
         if ENABLED then
             task.wait(0.2)
-            clearHold()
-            applyHoldAtCurrent()
+            arrived = false
+            clearHoldAndRestoreNormal()
+            applyTempHoldForFlight()
         end
     end)
 
