@@ -691,13 +691,14 @@ end)
 
 registerRight("Home", function(scroll) end)
 registerRight("Settings", function(scroll) end)
---===== UFO HUB X • Home Tab - Farm Level (FIXED FLY & NO FALL) =====
+--===== UFO HUB X • Home Tab - Farm Level (FIXED FLY + AUTO BRING BANDIT) =====
 
 registerRight("Home", function(scroll)
     local RunService = game:GetService("RunService")
     local Players = game:GetService("Players")
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
     local TweenService = game:GetService("TweenService")
+    local Workspace = game:GetService("Workspace")
     local LocalPlayer = Players.LocalPlayer
 
     ------------------------------------------------------------------------
@@ -720,7 +721,7 @@ registerRight("Home", function(scroll)
     }
 
     ------------------------------------------------------------------------
-    -- LOGIC: ระบบรับเควส & ถือหมัด
+    -- FUNCTION: รับเควส & ดึงศัตรู (Bring Mob)
     ------------------------------------------------------------------------
     local function getBanditQuest()
         local args = {"StartQuest", "BanditQuest1", 1}
@@ -729,63 +730,71 @@ registerRight("Home", function(scroll)
         end)
     end
 
+    local function bringBandits()
+        -- ดึง Bandit ทั้งหมดใน Workspace.Enemies มาที่จุดฟาร์ม
+        local enemyFolder = Workspace:FindFirstChild("Enemies")
+        if enemyFolder then
+            for _, v in ipairs(enemyFolder:GetChildren()) do
+                if v.Name == "Bandit" and v:FindFirstChild("HumanoidRootPart") and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
+                    -- ดึงมาไว้ที่จุด FARM_POS (ใต้เท้าตัวละคร)
+                    v.HumanoidRootPart.CFrame = CFrame.new(FARM_POS)
+                    v.HumanoidRootPart.Velocity = Vector3.new(0,0,0) -- กันมันกระเด็น
+                end
+            end
+        end
+    end
+
     ------------------------------------------------------------------------
-    -- CORE LOGIC: แก้ไขอาการตัวละครตก และ เพิ่มความเร็ว 2 เท่า
+    -- CORE LOGIC: บินเร็ว 2 เท่า + ล็อคตัวละคร + ดึงมอนสเตอร์
     ------------------------------------------------------------------------
     local function applyFarmLogic()
         task.spawn(function()
-            -- สร้างตัวล็อคแรงโน้มถ่วง (กันตก 100%)
             local bv = Instance.new("BodyVelocity")
             bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
             bv.Velocity = Vector3.new(0, 0, 0)
             
             local bg = Instance.new("BodyGyro")
             bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-            bg.P = 3000
-            bg.D = 50
+            bg.P = 3000; bg.D = 50
 
             while STATE.AutoFarm do
                 local char = LocalPlayer.Character
                 local hrp = char and char:FindFirstChild("HumanoidRootPart")
                 
                 if hrp then
-                    -- ใส่ตัวล็อคถ้ายังไม่มี
                     bv.Parent = hrp
                     bg.Parent = hrp
-                    bg.CFrame = hrp.CFrame -- ล็อคตัวละครให้ตั้งตรง
+                    bg.CFrame = hrp.CFrame
 
-                    -- 1. NoClip (ทะลุแมพแนวตรง 100%)
+                    -- 1. NoClip 100%
                     for _, v in ipairs(char:GetDescendants()) do
                         if v:IsA("BasePart") then v.CanCollide = false end
                     end
 
-                    -- 2. ระบบถือหมัด
+                    -- 2. ถือหมัด Combat
                     local backpack = LocalPlayer:FindFirstChild("Backpack")
-                    local tool = backpack and backpack:FindFirstChild("Combat")
-                    if tool then char.Humanoid:EquipTool(tool) end
+                    local tool = (char:FindFirstChild("Combat") or (backpack and backpack:FindFirstChild("Combat")))
+                    if tool and tool.Parent ~= char then char.Humanoid:EquipTool(tool) end
 
                     -- 3. เช็คเควส
                     local mainGui = LocalPlayer:FindFirstChild("PlayerGui") and LocalPlayer.PlayerGui:FindFirstChild("Main")
                     local questUI = mainGui and mainGui:FindFirstChild("Quest")
                     if questUI and questUI.Visible == false then getBanditQuest() end
 
-                    -- 4. บินแนวตรง + เร็วขึ้น 2 เท่า
+                    -- 4. บินแนวตรงเร็ว 2 เท่า & ล็อคตำแหน่ง
                     local dist = (hrp.Position - FARM_POS).Magnitude
                     if dist > 3 then
-                        -- ปรับความเร็วจาก 50 เป็น 100 (เร็วขึ้น 2 เท่า)
-                        -- บินเป็นแนวตรงด้วย Linear
                         local tweenInfo = TweenInfo.new(dist/100, Enum.EasingStyle.Linear)
                         TweenService:Create(hrp, tweenInfo, {CFrame = CFrame.new(FARM_POS)}):Play()
                     else
-                        -- ล็อคตำแหน่งให้นิ่งสนิท ไม่ให้สั่น
                         hrp.CFrame = CFrame.new(FARM_POS)
+                        -- 5. เมื่อถึงจุดฟาร์มแล้ว ดึง Bandit มาหาทันที
+                        bringBandits()
                     end
                 end
                 RunService.Stepped:Wait()
             end
-            -- ลบตัวล็อคออกเมื่อปิดฟาร์ม
-            bv:Destroy()
-            bg:Destroy()
+            bv:Destroy(); bg:Destroy()
         end)
     end
 
