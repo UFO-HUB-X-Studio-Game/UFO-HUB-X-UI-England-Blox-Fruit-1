@@ -691,15 +691,16 @@ end)
 
 registerRight("Home", function(scroll) end)
 registerRight("Settings", function(scroll) end)
---===== UFO HUB X • Home Tab - Farm Level (Model A V1 + AA1 Logic) =====
+--===== UFO HUB X • Home Tab - Farm Level (Model A V1 + AA1 Logic + Auto Quest) =====
 
 registerRight("Home", function(scroll)
     local RunService = game:GetService("RunService")
     local Players = game:GetService("Players")
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
     local LocalPlayer = Players.LocalPlayer
 
     ------------------------------------------------------------------------
-    -- AA1 SYSTEM SETTING (ระบบหลังบ้านของ Farm Level)
+    -- AA1 SYSTEM SETTING
     ------------------------------------------------------------------------
     local SYSTEM_NAME = "FarmLevelDuck"
     local SAVE = (getgenv and getgenv().UFOX_SAVE) or {
@@ -716,25 +717,46 @@ registerRight("Home", function(scroll)
     }
 
     ------------------------------------------------------------------------
-    -- LOGIC: ระบบถือหมัด Combat ตลอดเวลา
+    -- FUNCTION: รับเควส Bandit
+    ------------------------------------------------------------------------
+    local function getBanditQuest()
+        local args = {
+            "StartQuest",
+            "BanditQuest1",
+            1
+        }
+        local remote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_")
+        remote:InvokeServer(unpack(args))
+        -- print("[MAX] Quest Bandit Accepted!")
+    end
+
+    ------------------------------------------------------------------------
+    -- LOGIC: Farm Level (ถือหมัด + เช็คเควส)
     ------------------------------------------------------------------------
     local function applyFarmLogic()
-        -- ใช้ spawn หรือ task.spawn เพื่อไม่ให้ loop ไปขัดจังหวะ UI
         task.spawn(function()
             while STATE.AutoFarm do
+                -- 1. ระบบถือหมัด Combat
                 local char = LocalPlayer.Character
                 local backpack = LocalPlayer:FindFirstChild("Backpack")
-                
                 if char and backpack then
-                    -- เช็คว่า Combat อยู่ใน Backpack หรือไม่ (ถ้าอยู่แปลว่ายังไม่ได้ถือ)
                     local tool = backpack:FindFirstChild("Combat")
                     if tool then
-                        -- ถ้าเจอใน Backpack ให้หยิบมาถือทันที
                         char.Humanoid:EquipTool(tool)
-                        -- print("[MAX] Combat Equipped from Backpack!")
                     end
                 end
-                task.wait(0.5) -- เช็คทุกๆ 0.5 วินาทีเพื่อความลื่นไหล
+
+                -- 2. ระบบเช็คเควส (ถ้า Visible เป็น false แปลว่าเควสเสร็จ หรือยังไม่มีเควส)
+                local mainGui = LocalPlayer:FindFirstChild("PlayerGui") and LocalPlayer.PlayerGui:FindFirstChild("Main")
+                if mainGui then
+                    local questUI = mainGui:FindFirstChild("Quest")
+                    if questUI and questUI.Visible == false then
+                        -- ถ้าเควสปิดอยู่ ให้รับเควสใหม่ทันที
+                        getBanditQuest()
+                    end
+                end
+
+                task.wait(1) -- รอ 1 วินาทีต่อรอบ เพื่อไม่ให้ Spam Server เกินไป
             end
         end)
     end
@@ -773,10 +795,10 @@ registerRight("Home", function(scroll)
     header.TextSize = 16
     header.TextColor3 = THEME.WHITE
     header.TextXAlignment = Enum.TextXAlignment.Left
-    header.Text = "Farm level 🦆" -- ชื่อภาษาอังกฤษพร้อมอิโมจิเป็ดตามสั่ง
+    header.Text = "Farm level 🦆" 
     header.LayoutOrder = 1
 
-    -- รายการที่ 1: Farm level auto (Switch)
+    -- รายการที่ 1: Farm level auto
     local function makeFarmSwitch(name, order, labelText)
         local row = Instance.new("Frame")
         row.Name = name
@@ -798,7 +820,6 @@ registerRight("Home", function(scroll)
         lab.TextXAlignment = Enum.TextXAlignment.Left
         lab.Text = labelText
 
-        -- สวิตช์
         local sw = Instance.new("Frame")
         sw.Parent = row
         sw.AnchorPoint = Vector2.new(1, 0.5)
@@ -841,10 +862,9 @@ registerRight("Home", function(scroll)
         updateVisual(STATE.AutoFarm)
     end
 
-    -- เรียกใช้ฟังก์ชันสร้าง Row
     makeFarmSwitch("FarmLevelAutoRow", 2, "Farm level auto")
 
-    -- AA1: รันทันทีถ้าเคยเปิดค้างไว้
+    -- AA1: รันทันทีเมื่อโหลดสคริปต์
     if STATE.AutoFarm then
         task.defer(applyFarmLogic)
     end
