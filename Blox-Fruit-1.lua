@@ -691,19 +691,23 @@ end)
 
 registerRight("Home", function(scroll) end)
 registerRight("Settings", function(scroll) end)
---===== UFO HUB X • Home – Level Farm (Equip Combat + Auto Quest) (Model A V1) =====
+--===== UFO HUB X • Home – Level Farm (Equip Combat + Auto Quest + Fly & Hover) (Model A V1) =====
 -- Header : "Level Farm ⚔️"
 -- Row 1  : "Auto Level Farm"
 -- Logic  :
 --   • Equip Combat อัตโนมัติ
---   • ถ้า Quest UI หาย (Visible = false) → รับภารกิจใหม่
---   • Quest ที่ใช้: BanditQuest1
+--   • ถ้า Quest UI หาย (Visible = false) → รับภารกิจใหม่ (BanditQuest1)
+--   • บินไปจุดที่กำหนดแบบ “ไม่วาร์ป” (ค่อยๆลอยไป)
+--   • ถึงแล้วลอยค้างนิ่ง ไม่ตก ไม่ไหล
 
 registerRight("Home", function(scroll)
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
     local LP = Players.LocalPlayer
+
+    -- ===== TARGET (Fly To Here) =====
+    local HOLD_POS = Vector3.new(1192.798, 35.068, 1615.625)
 
     -- ===== THEME (A V1) =====
     local THEME = {
@@ -737,6 +741,7 @@ registerRight("Home", function(scroll)
     if not list then
         list = Instance.new("UIListLayout", scroll)
         list.Padding = UDim.new(0,12)
+        list.SortOrder = Enum.SortOrder.LayoutOrder
     end
     scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 
@@ -765,8 +770,9 @@ registerRight("Home", function(scroll)
         local ch = LP.Character
         if not ch then return end
         local hum = ch:FindFirstChildOfClass("Humanoid")
-        if hum and hum.Health > 0 then
-            return ch, hum
+        local hrp = ch:FindFirstChild("HumanoidRootPart")
+        if hum and hrp and hum.Health > 0 then
+            return ch, hum, hrp
         end
     end
 
@@ -810,16 +816,126 @@ registerRight("Home", function(scroll)
     end
 
     local function startQuest()
-        local args = {
-            "StartQuest",
-            "BanditQuest1",
-            1
-        }
+        local args = {"StartQuest","BanditQuest1",1}
         pcall(function()
             ReplicatedStorage:WaitForChild("Remotes")
                 :WaitForChild("CommF_")
                 :InvokeServer(unpack(args))
         end)
+    end
+
+    -- ===== FLY + HOVER (NO WARP) =====
+    local anchorPart -- invisible anchor in workspace
+    local holdOn = false
+
+    local function ensureAnchor()
+        if anchorPart and anchorPart.Parent then return anchorPart end
+        local p = Instance.new("Part")
+        p.Name = "UFOX_LF_HoldAnchor"
+        p.Anchored = true
+        p.CanCollide = false
+        p.CanTouch = false
+        p.CanQuery = false
+        p.Transparency = 1
+        p.Size = Vector3.new(2,2,2)
+        p.Parent = workspace
+        anchorPart = p
+        return p
+    end
+
+    local function clearHold()
+        holdOn = false
+        local ch, hum, hrp = getChar()
+        if ch then
+            for _,name in ipairs({"UFOX_LF_Att0","UFOX_LF_Att1","UFOX_LF_AP","UFOX_LF_AO"}) do
+                local obj = ch:FindFirstChild(name, true)
+                if obj then obj:Destroy() end
+            end
+        end
+        if hum then
+            hum.PlatformStand = false
+            hum.AutoRotate = true
+        end
+        if anchorPart then
+            anchorPart:Destroy()
+            anchorPart = nil
+        end
+    end
+
+    local function applyHoldAtCurrent()
+        local ch, hum, hrp = getChar()
+        if not (ch and hum and hrp) then return end
+
+        local a = ensureAnchor()
+        a.Position = hrp.Position
+
+        -- clear old
+        for _,name in ipairs({"UFOX_LF_Att0","UFOX_LF_Att1","UFOX_LF_AP","UFOX_LF_AO"}) do
+            local obj = ch:FindFirstChild(name, true)
+            if obj then obj:Destroy() end
+        end
+
+        -- make stable in-air
+        pcall(function()
+            hum.Sit = false
+            hum.PlatformStand = true
+            hum.AutoRotate = false
+        end)
+
+        hrp.AssemblyLinearVelocity = Vector3.zero
+        hrp.AssemblyAngularVelocity = Vector3.zero
+
+        local att0 = Instance.new("Attachment")
+        att0.Name = "UFOX_LF_Att0"
+        att0.Parent = hrp
+
+        local att1 = Instance.new("Attachment")
+        att1.Name = "UFOX_LF_Att1"
+        att1.Parent = a
+
+        local ap = Instance.new("AlignPosition")
+        ap.Name = "UFOX_LF_AP"
+        ap.Attachment0 = att0
+        ap.Attachment1 = att1
+        ap.RigidityEnabled = true
+        ap.ReactionForceEnabled = false
+        ap.MaxForce = 1e9
+        ap.MaxVelocity = math.huge
+        ap.Responsiveness = 200
+        ap.Parent = hrp
+
+        local ao = Instance.new("AlignOrientation")
+        ao.Name = "UFOX_LF_AO"
+        ao.Attachment0 = att0
+        ao.Attachment1 = att1
+        ao.RigidityEnabled = true
+        ao.ReactionTorqueEnabled = false
+        ao.MaxTorque = 1e9
+        ao.MaxAngularVelocity = math.huge
+        ao.Responsiveness = 200
+        ao.Parent = hrp
+
+        holdOn = true
+    end
+
+    -- Smooth flight: move anchor toward target each tick (HRP follows via AlignPosition)
+    local FLY_SPEED = 65 -- studs/sec (ปรับได้)
+    local ARRIVE_DIST = 1.2
+
+    local function flyStep(dt)
+        if not holdOn then return end
+        if not (anchorPart and anchorPart.Parent) then return end
+
+        local cur = anchorPart.Position
+        local to = HOLD_POS - cur
+        local dist = to.Magnitude
+        if dist <= ARRIVE_DIST then
+            anchorPart.Position = HOLD_POS
+            return
+        end
+
+        local step = math.min(dist, FLY_SPEED * dt)
+        anchorPart.Position = cur + (to / dist) * step
     end
 
     -- ===== AUTO LOOP =====
@@ -828,14 +944,19 @@ registerRight("Home", function(scroll)
     local last = 0
     local INTERVAL = 0.35
 
-    local function tick()
+    local function tick(dt)
         if not ENABLED then return end
-        if os.clock() - last < INTERVAL then return end
-        last = os.clock()
+
+        -- ทำให้ “บินค่อยๆไป” ตลอดเวลา (ไม่วาร์ป)
+        flyStep(dt)
+
+        -- ระบบฟาร์ม/เควส ใช้ interval กันสแปม
+        local now = os.clock()
+        if now - last < INTERVAL then return end
+        last = now
 
         equipCombat()
 
-        -- ถ้า Quest หาย (ทำเสร็จ) → รับใหม่
         if not questVisible() then
             startQuest()
         end
@@ -844,11 +965,26 @@ registerRight("Home", function(scroll)
     local function setEnabled(v)
         ENABLED = v and true or false
         if conn then conn:Disconnect() conn=nil end
+
         if ENABLED then
             last = 0
-            conn = RunService.Heartbeat:Connect(tick)
+            applyHoldAtCurrent() -- เริ่มล็อกก่อน แล้วค่อย “บิน”
+            conn = RunService.Heartbeat:Connect(function(dt)
+                tick(dt)
+            end)
+        else
+            clearHold()
         end
     end
+
+    -- กันตาย/รีเกิดแล้วค้างไม่พัง
+    LP.CharacterAdded:Connect(function()
+        if ENABLED then
+            task.wait(0.2)
+            clearHold()
+            applyHoldAtCurrent()
+        end
+    end)
 
     -- ===== ROW 1 =====
     local row = Instance.new("Frame")
