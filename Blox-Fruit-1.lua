@@ -691,15 +691,18 @@ end)
 
 registerRight("Home", function(scroll) end)
 registerRight("Settings", function(scroll) end)
---===== UFO HUB X • Home – Level Farm (Equip Combat First) (Model A V1) =====
+--===== UFO HUB X • Home – Level Farm (Equip Combat + Auto Quest) (Model A V1) =====
 -- Header : "Level Farm ⚔️"
 -- Row 1  : "Auto Level Farm"
--- Logic  : Combat in Backpack = NOT equipped
---          Combat missing from Backpack = equipped (usually in Character)
+-- Logic  :
+--   • Equip Combat อัตโนมัติ
+--   • ถ้า Quest UI หาย (Visible = false) → รับภารกิจใหม่
+--   • Quest ที่ใช้: BanditQuest1
 
 registerRight("Home", function(scroll)
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
     local LP = Players.LocalPlayer
 
     -- ===== THEME (A V1) =====
@@ -723,7 +726,7 @@ registerRight("Home", function(scroll)
         s.Parent = ui
     end
 
-    -- ===== CLEANUP (เฉพาะของเรา) =====
+    -- ===== CLEANUP =====
     for _,n in ipairs({"LF_Header","LF_Row1"}) do
         local o = scroll:FindFirstChild(n)
         if o then o:Destroy() end
@@ -734,11 +737,9 @@ registerRight("Home", function(scroll)
     if not list then
         list = Instance.new("UIListLayout", scroll)
         list.Padding = UDim.new(0,12)
-        list.SortOrder = Enum.SortOrder.LayoutOrder
     end
     scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 
-    -- ===== dynamic base LayoutOrder =====
     local base = 0
     for _,c in ipairs(scroll:GetChildren()) do
         if c:IsA("GuiObject") and c ~= list then
@@ -762,31 +763,24 @@ registerRight("Home", function(scroll)
     -- ===== HELPERS =====
     local function getChar()
         local ch = LP.Character
-        if not ch then return nil end
+        if not ch then return end
         local hum = ch:FindFirstChildOfClass("Humanoid")
-        if not hum or hum.Health <= 0 then return nil end
-        return ch, hum
+        if hum and hum.Health > 0 then
+            return ch, hum
+        end
     end
 
     local function getBackpack()
         return LP:FindFirstChildOfClass("Backpack")
     end
 
-    -- Combat in Backpack = NOT equipped
-    -- Combat missing from Backpack = equipped
+    -- Combat logic
     local function isCombatEquipped()
         local ch = LP.Character
         local bp = getBackpack()
         if not ch or not bp then return false end
-
-        if ch:FindFirstChild("Combat") then
-            return true
-        end
-
-        if not bp:FindFirstChild("Combat") then
-            return true
-        end
-
+        if ch:FindFirstChild("Combat") then return true end
+        if not bp:FindFirstChild("Combat") then return true end
         return false
     end
 
@@ -804,30 +798,59 @@ registerRight("Home", function(scroll)
         end
     end
 
+    -- ===== QUEST LOGIC =====
+    local function questVisible()
+        local pg = LP:FindFirstChild("PlayerGui")
+        local main = pg and pg:FindFirstChild("Main")
+        local quest = main and main:FindFirstChild("Quest")
+        if quest then
+            return quest.Visible
+        end
+        return false
+    end
+
+    local function startQuest()
+        local args = {
+            "StartQuest",
+            "BanditQuest1",
+            1
+        }
+        pcall(function()
+            ReplicatedStorage:WaitForChild("Remotes")
+                :WaitForChild("CommF_")
+                :InvokeServer(unpack(args))
+        end)
+    end
+
     -- ===== AUTO LOOP =====
     local ENABLED = false
     local conn
     local last = 0
-    local INTERVAL = 0.25
+    local INTERVAL = 0.35
 
     local function tick()
         if not ENABLED then return end
-        local now = os.clock()
-        if now - last < INTERVAL then return end
-        last = now
+        if os.clock() - last < INTERVAL then return end
+        last = os.clock()
+
         equipCombat()
+
+        -- ถ้า Quest หาย (ทำเสร็จ) → รับใหม่
+        if not questVisible() then
+            startQuest()
+        end
     end
 
     local function setEnabled(v)
         ENABLED = v and true or false
-        if conn then conn:Disconnect(); conn = nil end
+        if conn then conn:Disconnect() conn=nil end
         if ENABLED then
             last = 0
             conn = RunService.Heartbeat:Connect(tick)
         end
     end
 
-    -- ===== ROW 1 SWITCH (A V1) =====
+    -- ===== ROW 1 =====
     local row = Instance.new("Frame")
     row.Name = "LF_Row1"
     row.Parent = scroll
@@ -845,9 +868,8 @@ registerRight("Home", function(scroll)
     lab.TextSize = 13
     lab.TextColor3 = THEME.WHITE
     lab.TextXAlignment = Enum.TextXAlignment.Left
-    lab.Text = "Auto Level Farm" -- ✅ เปลี่ยนชื่อรายการที่ 1 เป็นอังกฤษ ไม่มีอิโมจิ
+    lab.Text = "Auto Level Farm"
 
-    -- switch
     local sw = Instance.new("Frame", row)
     sw.AnchorPoint = Vector2.new(1,0.5)
     sw.Position = UDim2.new(1,-12,0.5,0)
