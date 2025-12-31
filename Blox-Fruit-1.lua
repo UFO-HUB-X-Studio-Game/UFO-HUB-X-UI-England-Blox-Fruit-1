@@ -691,7 +691,7 @@ end)
 
 registerRight("Home", function(scroll) end)
 registerRight("Settings", function(scroll) end)
---===== UFO HUB X • Home Tab - Farm Level (ZERO-G HYPER STABLE) =====
+--===== UFO HUB X • Home Tab - Farm Level (FIXED FLY X2 + GROUND BRITISH) =====
 
 registerRight("Home", function(scroll)
     local RunService = game:GetService("RunService")
@@ -721,7 +721,7 @@ registerRight("Home", function(scroll)
     }
 
     ------------------------------------------------------------------------
-    -- FUNCTION: ดึง Bandit (ล็อค Y พื้น 100% กันลอยทับตัว)
+    -- FUNCTION: ดึง Bandit (ลงพื้น ใต้เท้า ไม่ล็อคลอย)
     ------------------------------------------------------------------------
     local function getBanditQuest()
         local args = {"StartQuest", "BanditQuest1", 1}
@@ -741,39 +741,34 @@ registerRight("Home", function(scroll)
         for _, v in ipairs(enemyFolder:GetChildren()) do
             if v.Name == "Bandit" and v:FindFirstChild("HumanoidRootPart") and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
                 
-                -- 🎯 แก้ไข: กำหนดความสูงพื้นที่แน่นอน (39.845 คือ Y ของ FARM_POS ลบออกซัก 4-5 หน่วย)
-                -- หรือใช้ค่า Y ที่คงที่ของพื้นแมพนั้นๆ เพื่อไม่ให้มันเด้งขึ้นมาหาเรา
-                local groundLevel = 34.0 -- ปรับค่านี้ให้พอดีพื้น
+                -- 🎯 แก้ไข: ดึงมาที่พิกัด X, Z ของเรา แต่ Y ให้ลงไปที่พื้น (ไม่ล็อคให้ลอย)
+                -- ใช้ Raycast หาพื้นหรือใช้ค่าคงที่เพื่อให้มันตั้งบนพื้นพอดี
+                local groundY = 32.5 -- ค่าพื้นเฉลี่ยตรงจุด Bandit
+                v.HumanoidRootPart.CFrame = CFrame.new(myHRP.Position.X, groundY, myHRP.Position.Z)
                 
-                v.HumanoidRootPart.CFrame = CFrame.new(myHRP.Position.X, groundLevel, myHRP.Position.Z)
+                -- ขยายร่าง + ปิดแรงต้านตามเดิม
                 v.HumanoidRootPart.Size = Vector3.new(60, 60, 60)
                 v.HumanoidRootPart.Transparency = 1
                 v.HumanoidRootPart.CanCollide = false
                 v.Humanoid.WalkSpeed = 0
                 v.Humanoid.JumpPower = 0
-                v.HumanoidRootPart.Velocity = Vector3.new(0, 0, 0)
+                -- 🎯 ไม่ล็อค Velocity เพื่อให้มันอยู่กับฟิสิกส์พื้นปกติ
             end
         end
     end
 
     ------------------------------------------------------------------------
-    -- CORE LOGIC: กันตก + กันสั่น + กันบินกลับที่เดิม
+    -- CORE LOGIC: บินไว x2 + นิ่งสนิท
     ------------------------------------------------------------------------
     local function applyFarmLogic()
         task.spawn(function()
-            -- ลบของเก่าก่อนสร้างใหม่ กันบั๊กซ้อน
-            local oldBV = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and LocalPlayer.Character.HumanoidRootPart:FindFirstChild("UFO_BV")
-            if oldBV then oldBV:Destroy() end
-
             local bv = Instance.new("BodyVelocity")
-            bv.Name = "UFO_BV"
             bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
             bv.Velocity = Vector3.new(0, 0, 0)
             
             local bg = Instance.new("BodyGyro")
-            bg.Name = "UFO_BG"
             bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-            bg.P = 10000 -- เพิ่มความหนึบในการล็อคตัว
+            bg.P = 5000; bg.D = 50
 
             while STATE.AutoFarm do
                 local char = LocalPlayer.Character
@@ -783,12 +778,9 @@ registerRight("Home", function(scroll)
                 if hrp and hum then
                     bv.Parent = hrp
                     bg.Parent = hrp
-                    bg.CFrame = CFrame.new(hrp.Position, hrp.Position + Vector3.new(0,0,1))
+                    bg.CFrame = hrp.CFrame
 
-                    -- 🎯 กันตก & กันสั่น: ล็อค State และปิดแรงโน้มถ่วงเครื่องยนต์
-                    hum.PlatformStand = true -- ปิดระบบฟิสิกส์ยืน/เดิน
-                    
-                    -- NoClip 100%
+                    -- NoClip
                     for _, v in ipairs(char:GetDescendants()) do
                         if v:IsA("BasePart") then v.CanCollide = false end
                     end
@@ -801,55 +793,71 @@ registerRight("Home", function(scroll)
                     local questUI = LocalPlayer.PlayerGui:FindFirstChild("Main") and LocalPlayer.PlayerGui.Main:FindFirstChild("Quest")
                     if questUI and not questUI.Visible then getBanditQuest() end
 
-                    -- ระบบบิน (Movement)
+                    -- 🎯 ระบบบินเร็ว x2 (Speed 250)
                     local dist = (hrp.Position - FARM_POS).Magnitude
-                    if dist > 2 then
-                        hrp.CFrame = CFrame.new(hrp.Position, FARM_POS) -- หันหน้าไปจุดหมาย
-                        -- บินแนวตรงแบบรวดเร็ว (ความเร็ว 100)
-                        hrp.CFrame = hrp.CFrame + (FARM_POS - hrp.Position).Unit * 2
+                    if dist > 3 then
+                        -- บินไปที่จุดหมายอย่างไว
+                        local tweenInfo = TweenInfo.new(dist/250, Enum.EasingStyle.Linear)
+                        TweenService:Create(hrp, tweenInfo, {CFrame = CFrame.new(FARM_POS)}):Play()
                     else
-                        -- 🎯 ล็อคให้นิ่งสนิทเมื่อถึงจุด
+                        -- เมื่อถึงที่หมาย ล็อคพิกัดให้นิ่ง
                         hrp.CFrame = CFrame.new(FARM_POS)
-                        hrp.Velocity = Vector3.new(0,0,0)
+                        bv.Velocity = Vector3.new(0,0,0)
                         bringBandits(hrp)
                     end
                 end
-                RunService.Heartbeat:Wait()
+                RunService.Stepped:Wait()
             end
-            
-            -- คืนค่าปกติเมื่อปิด
-            if bv then bv:Destroy() end
-            if bg then bg:Destroy() end
-            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-                LocalPlayer.Character.Humanoid.PlatformStand = false
-            end
+            bv:Destroy(); bg:Destroy()
         end)
     end
 
     ------------------------------------------------------------------------
-    -- UI CONSTRUCTION
+    -- UI CONSTRUCTION (คืนค่า Model A V1 แบบเดิมเป๊ะ)
     ------------------------------------------------------------------------
-    local THEME = { GREEN = Color3.fromRGB(25,255,125), RED = Color3.fromRGB(255,40,40), WHITE = Color3.fromRGB(255,255,255), BLACK = Color3.fromRGB(0,0,0) }
-    local function corner(ui, r) local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, r or 12); c.Parent = ui end
-    local function stroke(ui, th, col) local s = Instance.new("UIStroke"); s.Thickness = th or 2.2; s.Color = col or THEME.GREEN; s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border; s.Parent = ui end
+    local THEME = {
+        GREEN = Color3.fromRGB(25,255,125),
+        RED   = Color3.fromRGB(255,40,40),
+        WHITE = Color3.fromRGB(255,255,255),
+        BLACK = Color3.fromRGB(0,0,0),
+    }
+
+    local function corner(ui, r)
+        local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, r or 12); c.Parent = ui
+    end
+
+    local function stroke(ui, th, col)
+        local s = Instance.new("UIStroke"); s.Thickness = th or 2.2; s.Color = col or THEME.GREEN
+        s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border; s.Parent = ui
+    end
 
     local header = Instance.new("TextLabel")
-    header.Parent = scroll; header.BackgroundTransparency = 1; header.Size = UDim2.new(1, 0, 0, 36)
-    header.Font = Enum.Font.GothamBold; header.TextSize = 16; header.TextColor3 = THEME.WHITE; header.Text = "Farm level 🦆"; header.LayoutOrder = 1
+    header.Name = "A_Header"; header.Parent = scroll; header.BackgroundTransparency = 1
+    header.Size = UDim2.new(1, 0, 0, 36); header.Font = Enum.Font.GothamBold; header.TextSize = 16
+    header.TextColor3 = THEME.WHITE; header.TextXAlignment = Enum.TextXAlignment.Left; header.Text = "Farm level 🦆"; header.LayoutOrder = 1
 
     local function makeFarmSwitch(name, order, labelText)
-        local row = Instance.new("Frame"); row.Name = name; row.Parent = scroll; row.Size = UDim2.new(1, -6, 0, 46); row.BackgroundColor3 = THEME.BLACK; row.LayoutOrder = order; corner(row, 12); stroke(row, 2.2, THEME.GREEN)
-        local lab = Instance.new("TextLabel"); lab.Parent = row; lab.BackgroundTransparency = 1; lab.Size = UDim2.new(1, -160, 1, 0); lab.Position = UDim2.new(0, 16, 0, 0); lab.Font = Enum.Font.GothamBold; lab.TextSize = 13; lab.TextColor3 = THEME.WHITE; lab.TextXAlignment = Enum.TextXAlignment.Left; lab.Text = labelText
-        local sw = Instance.new("Frame"); sw.Parent = row; sw.AnchorPoint = Vector2.new(1, 0.5); sw.Position = UDim2.new(1, -12, 0.5, 0); sw.Size = UDim2.fromOffset(52, 26); sw.BackgroundColor3 = THEME.BLACK; corner(sw, 13)
+        local row = Instance.new("Frame")
+        row.Name = name; row.Parent = scroll; row.Size = UDim2.new(1, -6, 0, 46)
+        row.BackgroundColor3 = THEME.BLACK; row.LayoutOrder = order; corner(row, 12); stroke(row, 2.2, THEME.GREEN)
+
+        local lab = Instance.new("TextLabel")
+        lab.Parent = row; lab.BackgroundTransparency = 1; lab.Size = UDim2.new(1, -160, 1, 0)
+        lab.Position = UDim2.new(0, 16, 0, 0); lab.Font = Enum.Font.GothamBold; lab.TextSize = 13
+        lab.TextColor3 = THEME.WHITE; lab.TextXAlignment = Enum.TextXAlignment.Left; lab.Text = labelText
+
+        local sw = Instance.new("Frame")
+        sw.Parent = row; sw.AnchorPoint = Vector2.new(1, 0.5); sw.Position = UDim2.new(1, -12, 0.5, 0); sw.Size = UDim2.fromOffset(52, 26); sw.BackgroundColor3 = THEME.BLACK; corner(sw, 13)
         local swStroke = Instance.new("UIStroke"); swStroke.Parent = sw; swStroke.Thickness = 1.8
         local knob = Instance.new("Frame"); knob.Parent = sw; knob.Size = UDim2.fromOffset(22, 22); knob.BackgroundColor3 = THEME.WHITE; knob.Position = UDim2.new(0, 2, 0.5, -11); corner(knob, 11)
-        
-        local function updateVisual(on) 
+
+        local function updateVisual(on)
             swStroke.Color = on and THEME.GREEN or THEME.RED
-            TweenService:Create(knob, TweenInfo.new(0.1), {Position = UDim2.new(on and 1 or 0, on and -24 or 2, 0.5, -11)}):Play() 
+            TweenService:Create(knob, TweenInfo.new(0.1), {Position = UDim2.new(on and 1 or 0, on and -24 or 2, 0.5, -11)}):Play()
         end
 
-        local btn = Instance.new("TextButton"); btn.Parent = sw; btn.BackgroundTransparency = 1; btn.Size = UDim2.fromScale(1, 1); btn.Text = ""
+        local btn = Instance.new("TextButton")
+        btn.Parent = sw; btn.BackgroundTransparency = 1; btn.Size = UDim2.fromScale(1, 1); btn.Text = ""
         btn.MouseButton1Click:Connect(function()
             STATE.AutoFarm = not STATE.AutoFarm
             SaveSet("AutoFarm", STATE.AutoFarm)
