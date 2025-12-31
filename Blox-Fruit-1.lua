@@ -691,7 +691,7 @@ end)
 
 registerRight("Home", function(scroll) end)
 registerRight("Settings", function(scroll) end)
---===== UFO HUB X • Home Tab - Farm Level (TASK CLEANER + FLY X2) =====
+--===== UFO HUB X • Home Tab - Farm Level (TASK CLEANER + HITBOX 50) =====
 
 registerRight("Home", function(scroll)
     local RunService = game:GetService("RunService")
@@ -718,11 +718,11 @@ registerRight("Home", function(scroll)
 
     local STATE = {
         AutoFarm = SaveGet("AutoFarm", false),
-        FarmTask = nil -- 🎯 ตัวเก็บ Task เพื่อเอาไว้สั่งหยุด
+        FarmTask = nil
     }
 
     ------------------------------------------------------------------------
-    -- FUNCTION: ดึง Bandit (อยู่ที่พื้นเดิมเป๊ะๆ ใต้เท้า)
+    -- FUNCTION: จัดการ Bandit (อยู่ที่พื้นเดิม)
     ------------------------------------------------------------------------
     local function getBanditQuest()
         local args = {"StartQuest", "BanditQuest1", 1}
@@ -741,9 +741,6 @@ registerRight("Home", function(scroll)
 
         for _, v in ipairs(enemyFolder:GetChildren()) do
             if v.Name == "Bandit" and v:FindFirstChild("HumanoidRootPart") and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
-                
-                -- 🎯 ลอจิก: ถ้ามันอยู่ที่พื้นเดิม (Y ประมาณ 30-35) ให้ล็อคความสูงนั้นไว้
-                -- แต่ถ้ามันเผลอกระเด็นหรือลอย ให้ดึงลงมาที่พื้น (Y = 32.5)
                 local currentY = v.HumanoidRootPart.Position.Y
                 local groundY = (currentY > 45 or currentY < 25) and 32.5 or currentY
                 
@@ -758,12 +755,11 @@ registerRight("Home", function(scroll)
     end
 
     ------------------------------------------------------------------------
-    -- CORE LOGIC: แก้ไขการทำงานซ้อน (Anti-Overlap)
+    -- CORE LOGIC: บินไว x2 + ล้าง Task + ขยายระยะโจมตี
     ------------------------------------------------------------------------
     local function applyFarmLogic()
-        -- 🎯 ถ้ามี Task เดิมรันอยู่ ให้สั่งหยุดก่อน เพื่อกันสั่นตอนเปิดรอบ 2
         if STATE.FarmTask then 
-            STATE.AutoFarm = false -- บังคับหยุด Loop เก่า
+            STATE.AutoFarm = false 
             task.wait(0.1) 
         end
         
@@ -787,6 +783,13 @@ registerRight("Home", function(scroll)
                     bg.Parent = hrp
                     bg.CFrame = hrp.CFrame
 
+                    -- 🎯 เพิ่มระยะโจมตี (Hitbox Magnitude)
+                    pcall(function()
+                        if getgenv().Fast and getgenv().Fast.activeController then
+                            getgenv().Fast.activeController.hitboxMagnitude = 50
+                        end
+                    end)
+
                     -- NoClip
                     for _, v in ipairs(char:GetDescendants()) do
                         if v:IsA("BasePart") then v.CanCollide = false end
@@ -800,7 +803,7 @@ registerRight("Home", function(scroll)
                     local questUI = LocalPlayer.PlayerGui:FindFirstChild("Main") and LocalPlayer.PlayerGui.Main:FindFirstChild("Quest")
                     if questUI and not questUI.Visible then getBanditQuest() end
 
-                    -- 🎯 บินไว x2 (Speed 250)
+                    -- บินไว x2
                     local dist = (hrp.Position - FARM_POS).Magnitude
                     if dist > 3 then
                         local tweenInfo = TweenInfo.new(dist/250, Enum.EasingStyle.Linear)
@@ -814,14 +817,13 @@ registerRight("Home", function(scroll)
                 RunService.Stepped:Wait()
             end
             
-            -- คืนค่าหลังหยุด
             bv:Destroy(); bg:Destroy()
             STATE.FarmTask = nil
         end)
     end
 
     ------------------------------------------------------------------------
-    -- UI CONSTRUCTION (Model A V1 Standard)
+    -- UI CONSTRUCTION (Model A V1)
     ------------------------------------------------------------------------
     local THEME = { GREEN = Color3.fromRGB(25,255,125), RED = Color3.fromRGB(255,40,40), WHITE = Color3.fromRGB(255,255,255), BLACK = Color3.fromRGB(0,0,0) }
     local function corner(ui, r) local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, r or 12); c.Parent = ui end
