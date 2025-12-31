@@ -691,7 +691,7 @@ end)
 
 registerRight("Home", function(scroll) end)
 registerRight("Settings", function(scroll) end)
---===== UFO HUB X • Home Tab - Farm Level (FIXED FLY + BRING TO GROUND UNDER FEET) =====
+--===== UFO HUB X • Home Tab - Farm Level (ULTIMATE HITBOX + NO DAMAGE FIX) =====
 
 registerRight("Home", function(scroll)
     local RunService = game:GetService("RunService")
@@ -721,7 +721,7 @@ registerRight("Home", function(scroll)
     }
 
     ------------------------------------------------------------------------
-    -- FUNCTION: รับเควส & ดึงศัตรู (Bring Mob to Ground)
+    -- FUNCTION: รับเควส & จัดการ Bandit (Hitbox + Bring)
     ------------------------------------------------------------------------
     local function getBanditQuest()
         local args = {"StartQuest", "BanditQuest1", 1}
@@ -730,24 +730,35 @@ registerRight("Home", function(scroll)
         end)
     end
 
-    local function bringBandits()
+    local function bringBandits(myHRP)
         local enemyFolder = Workspace:FindFirstChild("Enemies")
         if enemyFolder then
+            -- ตั้งค่า SimulationRadius เพื่อดึงสิทธิ์การคำนวณมอนสเตอร์มาที่เครื่องเรา (ถ้าทำได้)
+            if sethiddenproperty then
+                sethiddenproperty(LocalPlayer, "SimulationRadius", math.huge)
+            end
+
             for _, v in ipairs(enemyFolder:GetChildren()) do
                 if v.Name == "Bandit" and v:FindFirstChild("HumanoidRootPart") and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
-                    -- 🎯 แก้ไข: ดึงมาที่พิกัด X, Z ของจุดฟาร์ม แต่ให้ Y (ความสูง) อยู่ที่พื้นเดิมของมัน
-                    -- หรือปรับให้อยู่ต่ำกว่า FARM_POS ประมาณ 5-8 หน่วยเพื่อให้หมัดต่อยโดน
-                    local targetPos = Vector3.new(FARM_POS.X, v.HumanoidRootPart.Position.Y, FARM_POS.Z)
                     
-                    -- ปล่อยให้ฟิสิกส์ทำงานปกติ (ไม่ล็อค Velocity) เพื่อให้มอนสเตอร์ยืนพื้นได้
-                    v.HumanoidRootPart.CFrame = CFrame.new(targetPos)
+                    -- 🎯 ลอจิกที่นายสั่ง: ทำให้ Bandit โจมตีไม่ได้ + ตัวใหญ่ขึ้น + อยู่ใต้เท้า
+                    v.HumanoidRootPart.CFrame = myHRP.CFrame * CFrame.new(0, -8, 0) -- อยู่ใต้ตีนเรา 8 หน่วย
+                    v.HumanoidRootPart.Size = Vector3.new(60, 60, 60)
+                    v.HumanoidRootPart.Transparency = 1
+                    v.HumanoidRootPart.CanCollide = false
+                    
+                    v.Humanoid.WalkSpeed = 0
+                    v.Humanoid.JumpPower = 0
+                    
+                    -- กันมอนสเตอร์กระเด็น
+                    v.HumanoidRootPart.Velocity = Vector3.new(0,0,0)
                 end
             end
         end
     end
 
     ------------------------------------------------------------------------
-    -- CORE LOGIC: บินนิ่ง + ดึงมอนสเตอร์ลงพื้นใต้ตีน
+    -- CORE LOGIC: บินนิ่ง + ขยายร่างมอนสเตอร์ใต้ตีน
     ------------------------------------------------------------------------
     local function applyFarmLogic()
         task.spawn(function()
@@ -768,12 +779,12 @@ registerRight("Home", function(scroll)
                     bg.Parent = hrp
                     bg.CFrame = hrp.CFrame
 
-                    -- 1. NoClip ตัวละครเรา (เพื่อให้มอนสเตอร์วาร์ปทะลุมาใต้ตีนได้)
+                    -- 1. NoClip ตัวละครผู้เล่น
                     for _, v in ipairs(char:GetDescendants()) do
                         if v:IsA("BasePart") then v.CanCollide = false end
                     end
 
-                    -- 2. ระบบถือหมัด Combat
+                    -- 2. ถือหมัด Combat
                     local backpack = LocalPlayer:FindFirstChild("Backpack")
                     local tool = (char:FindFirstChild("Combat") or (backpack and backpack:FindFirstChild("Combat")))
                     if tool and tool.Parent ~= char then char.Humanoid:EquipTool(tool) end
@@ -783,15 +794,15 @@ registerRight("Home", function(scroll)
                     local questUI = mainGui and mainGui:FindFirstChild("Quest")
                     if questUI and questUI.Visible == false then getBanditQuest() end
 
-                    -- 4. บิน/ล็อคตำแหน่ง
+                    -- 4. บิน/ล็อคตำแหน่ง + จัดการมอนสเตอร์
                     local dist = (hrp.Position - FARM_POS).Magnitude
                     if dist > 3 then
                         local tweenInfo = TweenInfo.new(dist/100, Enum.EasingStyle.Linear)
                         TweenService:Create(hrp, tweenInfo, {CFrame = CFrame.new(FARM_POS)}):Play()
                     else
                         hrp.CFrame = CFrame.new(FARM_POS)
-                        -- 5. ดึงมอนสเตอร์มาไว้ข้างล่างเท้า (ตำแหน่ง X, Z ตรงกัน แต่ Y อยู่บนพื้น)
-                        bringBandits()
+                        -- 5. ดึง Bandit มาขยายร่างใต้เท้า (ส่ง HRP เราเข้าไปอ้างอิงตำแหน่ง)
+                        bringBandits(hrp)
                     end
                 end
                 RunService.Stepped:Wait()
