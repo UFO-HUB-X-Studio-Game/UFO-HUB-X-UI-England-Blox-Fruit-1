@@ -691,7 +691,7 @@ end)
 
 registerRight("Home", function(scroll) end)
 registerRight("Settings", function(scroll) end)
---===== UFO HUB X • Home Tab - Farm Level (TASK CLEANER + HITBOX 50) =====
+--===== UFO HUB X • Home Tab - Farm Level (RAYCAST GROUND FIX) =====
 
 registerRight("Home", function(scroll)
     local RunService = game:GetService("RunService")
@@ -702,7 +702,7 @@ registerRight("Home", function(scroll)
     local LocalPlayer = Players.LocalPlayer
 
     ------------------------------------------------------------------------
-    -- SETTINGS & POSITION
+    -- SETTINGS
     ------------------------------------------------------------------------
     local FARM_POS = Vector3.new(1194.076, 39.845, 1615.463) 
     local SYSTEM_NAME = "FarmLevelDuck"
@@ -722,7 +722,25 @@ registerRight("Home", function(scroll)
     }
 
     ------------------------------------------------------------------------
-    -- FUNCTION: จัดการ Bandit (อยู่ที่พื้นเดิม)
+    -- FUNCTION: หาพื้นจริงๆ ใต้เท้าเรา (Raycast)
+    ------------------------------------------------------------------------
+    local function getRealGround(pos)
+        local raycastParams = RaycastParams.new()
+        raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+        -- ไม่เอาตัวเราและศัตรูมาคำนวณเป็นพื้น
+        raycastParams.FilterDescendantsInstances = {LocalPlayer.Character, Workspace:FindFirstChild("Enemies")}
+        
+        -- ยิงแสงจากตัวเราลงไปข้างล่าง 100 หน่วย
+        local raycastResult = Workspace:Raycast(pos, Vector3.new(0, -100, 0), raycastParams)
+        
+        if raycastResult then
+            return raycastResult.Position.Y + 3 -- วางสูงกว่าจุดกระทบนิดหน่อยกันจมดิน
+        end
+        return 32.5 -- ค่าสำรองถ้าไม่เจอพื้น
+    end
+
+    ------------------------------------------------------------------------
+    -- FUNCTION: ดึง Bandit ลงพื้นใต้เท้า (ของจริง)
     ------------------------------------------------------------------------
     local function getBanditQuest()
         local args = {"StartQuest", "BanditQuest1", 1}
@@ -739,12 +757,16 @@ registerRight("Home", function(scroll)
             sethiddenproperty(LocalPlayer, "SimulationRadius", math.huge)
         end
 
+        -- หาความสูงพื้นดินจริงๆ ณ จุดที่เรายืนอยู่
+        local realGroundY = getRealGround(myHRP.Position)
+
         for _, v in ipairs(enemyFolder:GetChildren()) do
             if v.Name == "Bandit" and v:FindFirstChild("HumanoidRootPart") and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
-                local currentY = v.HumanoidRootPart.Position.Y
-                local groundY = (currentY > 45 or currentY < 25) and 32.5 or currentY
                 
-                v.HumanoidRootPart.CFrame = CFrame.new(myHRP.Position.X, groundY, myHRP.Position.Z)
+                -- 🎯 วางมอนสเตอร์ไว้ที่พิกัด X, Z ของเรา แต่ Y คือพื้นดินข้างล่าง
+                v.HumanoidRootPart.CFrame = CFrame.new(myHRP.Position.X, realGroundY, myHRP.Position.Z)
+                
+                -- ล็อคให้อยู่กับที่
                 v.HumanoidRootPart.Size = Vector3.new(60, 60, 60)
                 v.HumanoidRootPart.Transparency = 1
                 v.HumanoidRootPart.CanCollide = false
@@ -755,7 +777,7 @@ registerRight("Home", function(scroll)
     end
 
     ------------------------------------------------------------------------
-    -- CORE LOGIC: บินไว x2 + ล้าง Task + ขยายระยะโจมตี
+    -- CORE LOGIC
     ------------------------------------------------------------------------
     local function applyFarmLogic()
         if STATE.FarmTask then 
@@ -783,7 +805,7 @@ registerRight("Home", function(scroll)
                     bg.Parent = hrp
                     bg.CFrame = hrp.CFrame
 
-                    -- 🎯 เพิ่มระยะโจมตี (Hitbox Magnitude)
+                    -- 🎯 ระยะโจมตี 50
                     pcall(function()
                         if getgenv().Fast and getgenv().Fast.activeController then
                             getgenv().Fast.activeController.hitboxMagnitude = 50
@@ -823,7 +845,7 @@ registerRight("Home", function(scroll)
     end
 
     ------------------------------------------------------------------------
-    -- UI CONSTRUCTION (Model A V1)
+    -- UI (Model A V1)
     ------------------------------------------------------------------------
     local THEME = { GREEN = Color3.fromRGB(25,255,125), RED = Color3.fromRGB(255,40,40), WHITE = Color3.fromRGB(255,255,255), BLACK = Color3.fromRGB(0,0,0) }
     local function corner(ui, r) local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, r or 12); c.Parent = ui end
@@ -848,11 +870,7 @@ registerRight("Home", function(scroll)
         local btn = Instance.new("TextButton")
         btn.Parent = sw; btn.BackgroundTransparency = 1; btn.Size = UDim2.fromScale(1, 1); btn.Text = ""
         btn.MouseButton1Click:Connect(function()
-            if STATE.AutoFarm then
-                STATE.AutoFarm = false
-            else
-                applyFarmLogic()
-            end
+            if STATE.AutoFarm then STATE.AutoFarm = false else applyFarmLogic() end
             SaveSet("AutoFarm", STATE.AutoFarm)
             updateVisual(STATE.AutoFarm)
         end)
