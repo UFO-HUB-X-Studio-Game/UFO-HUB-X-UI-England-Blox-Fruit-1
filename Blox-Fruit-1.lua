@@ -691,7 +691,7 @@ end)
 
 registerRight("Home", function(scroll) end)
 registerRight("Settings", function(scroll) end)
---===== UFO HUB X • Home – Level Farm (Equip Combat + Auto Quest + Fly & HOLD + NoClip + Pull Bandits) (Model A V1) =====
+--===== UFO HUB X • Home – Level Farm (Equip Combat + Auto Quest + Fly & HOLD + NoClip + Pull Bandits ONE-SHOT) (Model A V1) =====
 -- Header : "Level Farm ⚔️"
 -- Row 1  : "Auto Level Farm"
 -- Logic  :
@@ -700,7 +700,7 @@ registerRight("Settings", function(scroll) end)
 --   • Fly (no warp) to HOLD_POS (2x speed)
 --   • NoClip while enabled
 --   • HOLD at target (no fall / no drift)
---   • Pull all "Bandit" in workspace.Enemies under your feet
+--   • Pull all "Bandit" in workspace.Enemies to ONE SAME POINT on the ground, then RELEASE (no holding bandits)
 
 registerRight("Home", function(scroll)
     local Players = game:GetService("Players")
@@ -711,10 +711,8 @@ registerRight("Home", function(scroll)
     -- ===== TARGET (Fly To Here) =====
     local HOLD_POS = Vector3.new(1192.798, 35.068, 1615.625)
 
-    -- pull bandits under feet (offset)
-    local PULL_OFFSET = Vector3.new(0, -6, 0) -- ใต้เท้า
-    local PULL_RADIUS = 6                      -- กระจายเป็นวง กันชน
-    local PULL_INTERVAL = 0.35                 -- ดึงถี่แค่ไหน
+    -- ===== PULL SETTINGS =====
+    local PULL_UP = 3.0 -- ยกขึ้นจากพื้นนิดนึงให้ HRP ไม่จมพื้น
 
     -- ===== THEME (A V1) =====
     local THEME = {
@@ -921,7 +919,6 @@ registerRight("Home", function(scroll)
             if obj then obj:Destroy() end
         end
 
-        -- ให้ดู “ปกติ” แต่ไม่หล่น/ไม่ไหล
         pcall(function()
             hum.Sit = false
             hum.AutoRotate = true
@@ -947,7 +944,7 @@ registerRight("Home", function(scroll)
         ap.ReactionForceEnabled = false
         ap.MaxForce = 1e9
         ap.MaxVelocity = math.huge
-        ap.Responsiveness = 300
+        ap.Responsiveness = 320
         ap.Parent = hrp
 
         local ao = Instance.new("AlignOrientation")
@@ -958,7 +955,7 @@ registerRight("Home", function(scroll)
         ao.ReactionTorqueEnabled = false
         ao.MaxTorque = 1e9
         ao.MaxAngularVelocity = math.huge
-        ao.Responsiveness = 300
+        ao.Responsiveness = 320
         ao.Parent = hrp
 
         holdOn = true
@@ -996,7 +993,9 @@ registerRight("Home", function(scroll)
         end
     end
 
-    -- ===== Pull Bandits (Local attempt) =====
+    -- ===== Pull Bandits (ONE SAME POINT ON GROUND, THEN RELEASE) =====
+    local pulledOnce = false
+
     local function getEnemiesFolder()
         return workspace:FindFirstChild("Enemies")
     end
@@ -1013,43 +1012,56 @@ registerRight("Home", function(scroll)
         end
     end
 
-    local lastPull = 0
-    local function pullAllBanditsUnderFeet()
-        local now = os.clock()
-        if now - lastPull < PULL_INTERVAL then return end
-        lastPull = now
+    local function getGroundPointAt(xzPos)
+        -- ยิงลงจากด้านบน เพื่อหาพื้นจริง
+        local rayOrigin = xzPos + Vector3.new(0, 300, 0)
+        local rayDir    = Vector3.new(0, -800, 0)
+
+        local params = RaycastParams.new()
+        params.FilterType = Enum.RaycastFilterType.Blacklist
+        params.FilterDescendantsInstances = { LP.Character, anchorPart }
+        params.IgnoreWater = false
+
+        local hit = workspace:Raycast(rayOrigin, rayDir, params)
+        if hit then
+            return hit.Position
+        end
+
+        -- ถ้าไม่เจอพื้น (แปลกมาก) ใช้ HOLD_POS เดิม
+        return xzPos
+    end
+
+    local function pullAllBanditsToOnePointAndRelease()
+        if pulledOnce then return end
 
         local enemies = getEnemiesFolder()
         if not enemies then return end
 
-        local basePos = HOLD_POS + PULL_OFFSET
-        local bandits = {}
+        -- จุดเดียวกันเป๊ะๆ (XZ ใช้ HOLD_POS) แต่ Y ใช้พื้นจริง
+        local ground = getGroundPointAt(Vector3.new(HOLD_POS.X, HOLD_POS.Y, HOLD_POS.Z))
+        local target = ground + Vector3.new(0, PULL_UP, 0)
 
+        local any = false
         for _,mob in ipairs(enemies:GetChildren()) do
             if mob:IsA("Model") and mob.Name == "Bandit" then
-                table.insert(bandits, mob)
+                local hrp = getMobHRP(mob)
+                local hum = mob:FindFirstChildOfClass("Humanoid")
+                if hrp and hum and hum.Health > 0 then
+                    any = true
+                    setMobNoCollide(mob)
+
+                    -- ย้ายไปจุดเดียวกันเลย แล้วปล่อย (ไม่ล็อก/ไม่ดึงซ้ำ)
+                    pcall(function()
+                        hrp.AssemblyLinearVelocity = Vector3.zero
+                        hrp.AssemblyAngularVelocity = Vector3.zero
+                        hrp.CFrame = CFrame.new(target)
+                    end)
+                end
             end
         end
-        if #bandits == 0 then return end
 
-        local n = #bandits
-        for i, mob in ipairs(bandits) do
-            local hrp = getMobHRP(mob)
-            local hum = mob:FindFirstChildOfClass("Humanoid")
-            if hrp and hum and hum.Health > 0 then
-                setMobNoCollide(mob)
-
-                local ang = (i / math.max(1, n)) * math.pi * 2
-                local offset = Vector3.new(math.cos(ang) * PULL_RADIUS, 0, math.sin(ang) * PULL_RADIUS)
-                local pos = basePos + offset
-
-                -- พยายามดึง (Local) — ถ้าเกมคุณให้ client ownership จะติดเลย
-                pcall(function()
-                    hrp.AssemblyLinearVelocity = Vector3.zero
-                    hrp.AssemblyAngularVelocity = Vector3.zero
-                    hrp.CFrame = CFrame.new(pos)
-                end)
-            end
+        if any then
+            pulledOnce = true
         end
     end
 
@@ -1066,7 +1078,8 @@ registerRight("Home", function(scroll)
             flyStep(dt)
         else
             enforceHold()
-            pullAllBanditsUnderFeet() -- ✅ ถึงแล้ว ดึง Bandit ทุกตัวมาใต้เท้า
+            -- ✅ ถึงแล้ว ดึง Bandit “ครั้งเดียว” ไปจุดเดียวกันที่พื้น แล้วปล่อย
+            pullAllBanditsToOnePointAndRelease()
         end
 
         local now = os.clock()
@@ -1086,6 +1099,8 @@ registerRight("Home", function(scroll)
         if ENABLED then
             last = 0
             arrived = false
+            pulledOnce = false
+
             enableNoClip()
 
             local _,_,hrp = getChar()
@@ -1108,6 +1123,9 @@ registerRight("Home", function(scroll)
             disableNoClip()
             clearHold()
             enableNoClip()
+
+            arrived = false
+            pulledOnce = false
 
             local _,_,hrp = getChar()
             if hrp then
