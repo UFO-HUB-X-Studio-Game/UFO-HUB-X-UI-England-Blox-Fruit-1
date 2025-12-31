@@ -691,16 +691,16 @@ end)
 
 registerRight("Home", function(scroll) end)
 registerRight("Settings", function(scroll) end)
---===== UFO HUB X • Home – Level Farm (Equip Combat + Auto Quest + Fly & HOLD + NoClip + Pull Bandits ONE-SHOT) (Model A V1) =====
+--===== UFO HUB X • Home – Level Farm (Equip Combat + Auto Quest + Fly & HOLD + NoClip + Pull Bandits BURST) (Model A V1) =====
 -- Header : "Level Farm ⚔️"
 -- Row 1  : "Auto Level Farm"
 -- Logic  :
 --   • Equip Combat
 --   • Auto Quest: BanditQuest1 (Quest.Visible=false => StartQuest)
---   • Fly (no warp) to HOLD_POS (2x speed)
+--   • Fly (no warp) to HOLD_POS (2x speed) — FIX no circling
 --   • NoClip while enabled
 --   • HOLD at target (no fall / no drift)
---   • Pull all "Bandit" in workspace.Enemies to ONE SAME POINT on the ground, then RELEASE (no holding bandits)
+--   • When arrived: pull ALL "Bandit" in workspace.Enemies to ONE ground point together (smooth burst), then RELEASE (restore collide)
 
 registerRight("Home", function(scroll)
     local Players = game:GetService("Players")
@@ -712,7 +712,10 @@ registerRight("Home", function(scroll)
     local HOLD_POS = Vector3.new(1192.798, 35.068, 1615.625)
 
     -- ===== PULL SETTINGS =====
-    local PULL_UP = 3.0 -- ยกขึ้นจากพื้นนิดนึงให้ HRP ไม่จมพื้น
+    local PULL_UP = 3.0         -- ยกขึ้นจากพื้นนิดนึงไม่ให้จม
+    local PULL_TIME = 0.60      -- เวลาค่อยๆดึง (ทุกตัวพร้อมกัน)
+    local PULL_HOLD = 0.10      -- ค้างเป้าแป๊บก่อนปล่อย (กันเด้ง)
+    local PULL_ZERO_VEL = true  -- ล็อกความเร็วให้หยุดตอนดึง
 
     -- ===== THEME (A V1) =====
     local THEME = {
@@ -866,6 +869,7 @@ registerRight("Home", function(scroll)
     local anchorPart
     local holdOn = false
     local arrived = false
+    local flying = false
 
     local function ensureAnchor()
         if anchorPart and anchorPart.Parent then return anchorPart end
@@ -885,6 +889,7 @@ registerRight("Home", function(scroll)
     local function clearHold()
         holdOn = false
         arrived = false
+        flying = false
 
         local ch, hum, hrp = getChar()
         if ch then
@@ -907,6 +912,24 @@ registerRight("Home", function(scroll)
         end
     end
 
+    local function setHumFlightMode(on)
+        local _, hum, hrp = getChar()
+        if hum then
+            if on then
+                hum.Sit = false
+                hum.PlatformStand = true     -- ✅ กันอาการ “วน/กลมๆ”
+                hum.AutoRotate = false
+            else
+                hum.PlatformStand = false
+                hum.AutoRotate = true
+            end
+        end
+        if hrp then
+            hrp.AssemblyLinearVelocity = Vector3.zero
+            hrp.AssemblyAngularVelocity = Vector3.zero
+        end
+    end
+
     local function applyHoldAt(pos)
         local ch, hum, hrp = getChar()
         if not (ch and hum and hrp) then return end
@@ -918,15 +941,6 @@ registerRight("Home", function(scroll)
             local obj = ch:FindFirstChild(name, true)
             if obj then obj:Destroy() end
         end
-
-        pcall(function()
-            hum.Sit = false
-            hum.AutoRotate = true
-            hum.PlatformStand = false
-        end)
-
-        hrp.AssemblyLinearVelocity = Vector3.zero
-        hrp.AssemblyAngularVelocity = Vector3.zero
 
         local att0 = Instance.new("Attachment")
         att0.Name = "UFOX_LF_Att0"
@@ -944,20 +958,10 @@ registerRight("Home", function(scroll)
         ap.ReactionForceEnabled = false
         ap.MaxForce = 1e9
         ap.MaxVelocity = math.huge
-        ap.Responsiveness = 320
+        ap.Responsiveness = 350
         ap.Parent = hrp
 
-        local ao = Instance.new("AlignOrientation")
-        ao.Name = "UFOX_LF_AO"
-        ao.Attachment0 = att0
-        ao.Attachment1 = att1
-        ao.RigidityEnabled = true
-        ao.ReactionTorqueEnabled = false
-        ao.MaxTorque = 1e9
-        ao.MaxAngularVelocity = math.huge
-        ao.Responsiveness = 320
-        ao.Parent = hrp
-
+        -- ปิด AlignOrientation ไปเลย ลดอาการหมุน/วน (เอาแค่วางตำแหน่งให้เป๊ะ)
         holdOn = true
     end
 
@@ -976,6 +980,8 @@ registerRight("Home", function(scroll)
         if dist <= ARRIVE_DIST then
             anchorPart.Position = HOLD_POS
             arrived = true
+            flying = false
+            setHumFlightMode(false) -- ✅ ถึงแล้วคืนปกติ 100% (แต่ยัง hold ตำแหน่ง)
             return
         end
 
@@ -993,8 +999,9 @@ registerRight("Home", function(scroll)
         end
     end
 
-    -- ===== Pull Bandits (ONE SAME POINT ON GROUND, THEN RELEASE) =====
-    local pulledOnce = false
+    -- ===== Pull Bandits (Smooth BURST, ALL TOGETHER, THEN RELEASE) =====
+    local pulledDone = false
+    local pullingNow = false
 
     local function getEnemiesFolder()
         return workspace:FindFirstChild("Enemies")
@@ -1004,8 +1011,26 @@ registerRight("Home", function(scroll)
         return m:FindFirstChild("HumanoidRootPart") or m:FindFirstChild("HRP")
     end
 
-    local function setMobNoCollide(m)
-        for _,d in ipairs(m:GetDescendants()) do
+    local function snapshotCollide(model)
+        local snap = {}
+        for _,d in ipairs(model:GetDescendants()) do
+            if d:IsA("BasePart") then
+                snap[d] = d.CanCollide
+            end
+        end
+        return snap
+    end
+
+    local function restoreCollide(snap)
+        for part, was in pairs(snap) do
+            if part and part.Parent then
+                part.CanCollide = was
+            end
+        end
+    end
+
+    local function setModelNoCollide(model)
+        for _,d in ipairs(model:GetDescendants()) do
             if d:IsA("BasePart") then
                 d.CanCollide = false
             end
@@ -1013,9 +1038,8 @@ registerRight("Home", function(scroll)
     end
 
     local function getGroundPointAt(xzPos)
-        -- ยิงลงจากด้านบน เพื่อหาพื้นจริง
         local rayOrigin = xzPos + Vector3.new(0, 300, 0)
-        local rayDir    = Vector3.new(0, -800, 0)
+        local rayDir    = Vector3.new(0, -900, 0)
 
         local params = RaycastParams.new()
         params.FilterType = Enum.RaycastFilterType.Blacklist
@@ -1023,46 +1047,102 @@ registerRight("Home", function(scroll)
         params.IgnoreWater = false
 
         local hit = workspace:Raycast(rayOrigin, rayDir, params)
-        if hit then
-            return hit.Position
-        end
-
-        -- ถ้าไม่เจอพื้น (แปลกมาก) ใช้ HOLD_POS เดิม
-        return xzPos
+        return (hit and hit.Position) or xzPos
     end
 
-    local function pullAllBanditsToOnePointAndRelease()
-        if pulledOnce then return end
-
+    local function pullBanditsBurstAllTogether()
+        if pulledDone or pullingNow then return end
         local enemies = getEnemiesFolder()
         if not enemies then return end
 
-        -- จุดเดียวกันเป๊ะๆ (XZ ใช้ HOLD_POS) แต่ Y ใช้พื้นจริง
-        local ground = getGroundPointAt(Vector3.new(HOLD_POS.X, HOLD_POS.Y, HOLD_POS.Z))
-        local target = ground + Vector3.new(0, PULL_UP, 0)
-
-        local any = false
+        -- เก็บรายชื่อ bandit ทั้งหมดก่อน (ให้ “มาทั้งหมด”)
+        local listBandit = {}
         for _,mob in ipairs(enemies:GetChildren()) do
             if mob:IsA("Model") and mob.Name == "Bandit" then
                 local hrp = getMobHRP(mob)
                 local hum = mob:FindFirstChildOfClass("Humanoid")
                 if hrp and hum and hum.Health > 0 then
-                    any = true
-                    setMobNoCollide(mob)
+                    table.insert(listBandit, mob)
+                end
+            end
+        end
+        if #listBandit == 0 then return end
 
-                    -- ย้ายไปจุดเดียวกันเลย แล้วปล่อย (ไม่ล็อก/ไม่ดึงซ้ำ)
-                    pcall(function()
-                        hrp.AssemblyLinearVelocity = Vector3.zero
-                        hrp.AssemblyAngularVelocity = Vector3.zero
-                        hrp.CFrame = CFrame.new(target)
-                    end)
+        pullingNow = true
+
+        local ground = getGroundPointAt(Vector3.new(HOLD_POS.X, HOLD_POS.Y, HOLD_POS.Z))
+        local target = ground + Vector3.new(0, PULL_UP, 0)
+
+        -- snapshot + start positions
+        local collideSnaps = {}
+        local startPos = {}
+        for _,mob in ipairs(listBandit) do
+            collideSnaps[mob] = snapshotCollide(mob)
+            setModelNoCollide(mob)
+            local hrp = getMobHRP(mob)
+            if hrp then
+                startPos[mob] = hrp.Position
+                if PULL_ZERO_VEL then
+                    hrp.AssemblyLinearVelocity = Vector3.zero
+                    hrp.AssemblyAngularVelocity = Vector3.zero
                 end
             end
         end
 
-        if any then
-            pulledOnce = true
-        end
+        -- “ค่อยๆดึง” แต่ทุกตัวขยับพร้อมกัน
+        task.spawn(function()
+            local t0 = os.clock()
+            while true do
+                local t = os.clock() - t0
+                local a = math.clamp(t / PULL_TIME, 0, 1)
+
+                for _,mob in ipairs(listBandit) do
+                    local hrp = getMobHRP(mob)
+                    local hum = mob:FindFirstChildOfClass("Humanoid")
+                    if hrp and hum and hum.Health > 0 then
+                        local sp = startPos[mob] or hrp.Position
+                        local pos = sp:Lerp(target, a)
+                        pcall(function()
+                            if PULL_ZERO_VEL then
+                                hrp.AssemblyLinearVelocity = Vector3.zero
+                                hrp.AssemblyAngularVelocity = Vector3.zero
+                            end
+                            hrp.CFrame = CFrame.new(pos)
+                        end)
+                    end
+                end
+
+                if a >= 1 then break end
+                RunService.Heartbeat:Wait()
+            end
+
+            -- ค้างเป้าสั้นๆ แล้ว “ปล่อย” ให้เป็นปกติ
+            local holdUntil = os.clock() + PULL_HOLD
+            while os.clock() < holdUntil do
+                for _,mob in ipairs(listBandit) do
+                    local hrp = getMobHRP(mob)
+                    if hrp then
+                        pcall(function()
+                            if PULL_ZERO_VEL then
+                                hrp.AssemblyLinearVelocity = Vector3.zero
+                                hrp.AssemblyAngularVelocity = Vector3.zero
+                            end
+                            hrp.CFrame = CFrame.new(target)
+                        end)
+                    end
+                end
+                RunService.Heartbeat:Wait()
+            end
+
+            -- restore collisions (กลับสภาพปกติ)
+            for _,mob in ipairs(listBandit) do
+                local snap = collideSnaps[mob]
+                if snap then restoreCollide(snap) end
+            end
+
+            pulledDone = true
+            pullingNow = false
+        end)
     end
 
     -- ===== AUTO LOOP =====
@@ -1078,8 +1158,8 @@ registerRight("Home", function(scroll)
             flyStep(dt)
         else
             enforceHold()
-            -- ✅ ถึงแล้ว ดึง Bandit “ครั้งเดียว” ไปจุดเดียวกันที่พื้น แล้วปล่อย
-            pullAllBanditsToOnePointAndRelease()
+            -- ✅ ถึงแล้ว ค่อยๆดึง “ทั้งหมดพร้อมกัน” แล้วปล่อย
+            pullBanditsBurstAllTogether()
         end
 
         local now = os.clock()
@@ -1099,13 +1179,16 @@ registerRight("Home", function(scroll)
         if ENABLED then
             last = 0
             arrived = false
-            pulledOnce = false
+            flying = true
+            pulledDone = false
+            pullingNow = false
 
             enableNoClip()
 
             local _,_,hrp = getChar()
             if hrp then
                 applyHoldAt(hrp.Position)
+                setHumFlightMode(true) -- ✅ เปิดโหมดบินกันวน
             end
 
             conn = RunService.Heartbeat:Connect(function(dt)
@@ -1125,11 +1208,14 @@ registerRight("Home", function(scroll)
             enableNoClip()
 
             arrived = false
-            pulledOnce = false
+            flying = true
+            pulledDone = false
+            pullingNow = false
 
             local _,_,hrp = getChar()
             if hrp then
                 applyHoldAt(hrp.Position)
+                setHumFlightMode(true)
             end
         end
     end)
