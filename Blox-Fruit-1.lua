@@ -691,7 +691,7 @@ end)
 
 registerRight("Home", function(scroll) end)
 registerRight("Settings", function(scroll) end)
---===== UFO HUB X • Home Tab - Farm Level (Model A V1 + AA1 Logic + Auto Quest + Fly & NoClip) =====
+--===== UFO HUB X • Home Tab - Farm Level (FIXED FLY & NO FALL) =====
 
 registerRight("Home", function(scroll)
     local RunService = game:GetService("RunService")
@@ -703,7 +703,7 @@ registerRight("Home", function(scroll)
     ------------------------------------------------------------------------
     -- SETTINGS & POSITION
     ------------------------------------------------------------------------
-    local FARM_POS = Vector3.new(1194.076, 39.845, 1615.463) -- ตำแหน่งลอยฟ้าที่นายให้มา
+    local FARM_POS = Vector3.new(1194.076, 39.845, 1615.463) 
     local SYSTEM_NAME = "FarmLevelDuck"
     
     local SAVE = (getgenv and getgenv().UFOX_SAVE) or {
@@ -720,7 +720,7 @@ registerRight("Home", function(scroll)
     }
 
     ------------------------------------------------------------------------
-    -- FUNCTION: รับเควส Bandit
+    -- LOGIC: ระบบรับเควส & ถือหมัด
     ------------------------------------------------------------------------
     local function getBanditQuest()
         local args = {"StartQuest", "BanditQuest1", 1}
@@ -730,53 +730,67 @@ registerRight("Home", function(scroll)
     end
 
     ------------------------------------------------------------------------
-    -- LOGIC: ระบบบิน/ทะลุแมพ/ล็อคตำแหน่ง (The Core Fly Logic)
+    -- CORE LOGIC: แก้ไขอาการตัวละครตก และ เพิ่มความเร็ว 2 เท่า
     ------------------------------------------------------------------------
     local function applyFarmLogic()
         task.spawn(function()
+            -- สร้างตัวล็อคแรงโน้มถ่วง (กันตก 100%)
+            local bv = Instance.new("BodyVelocity")
+            bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+            bv.Velocity = Vector3.new(0, 0, 0)
+            
+            local bg = Instance.new("BodyGyro")
+            bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+            bg.P = 3000
+            bg.D = 50
+
             while STATE.AutoFarm do
                 local char = LocalPlayer.Character
                 local hrp = char and char:FindFirstChild("HumanoidRootPart")
                 
                 if hrp then
-                    -- 1. NoClip (ทะลุทุกอย่าง 100%)
+                    -- ใส่ตัวล็อคถ้ายังไม่มี
+                    bv.Parent = hrp
+                    bg.Parent = hrp
+                    bg.CFrame = hrp.CFrame -- ล็อคตัวละครให้ตั้งตรง
+
+                    -- 1. NoClip (ทะลุแมพแนวตรง 100%)
                     for _, v in ipairs(char:GetDescendants()) do
-                        if v:IsA("BasePart") then
-                            v.CanCollide = false
-                        end
+                        if v:IsA("BasePart") then v.CanCollide = false end
                     end
 
-                    -- 2. ระบบถือหมัด Combat
+                    -- 2. ระบบถือหมัด
                     local backpack = LocalPlayer:FindFirstChild("Backpack")
                     local tool = backpack and backpack:FindFirstChild("Combat")
                     if tool then char.Humanoid:EquipTool(tool) end
 
-                    -- 3. ระบบเช็คเควส
+                    -- 3. เช็คเควส
                     local mainGui = LocalPlayer:FindFirstChild("PlayerGui") and LocalPlayer.PlayerGui:FindFirstChild("Main")
                     local questUI = mainGui and mainGui:FindFirstChild("Quest")
-                    if questUI and questUI.Visible == false then
-                        getBanditQuest()
-                    end
+                    if questUI and questUI.Visible == false then getBanditQuest() end
 
-                    -- 4. ระบบบินไปที่ตำแหน่ง และ ล็อคตัวละครค้างไว้
+                    -- 4. บินแนวตรง + เร็วขึ้น 2 เท่า
                     local dist = (hrp.Position - FARM_POS).Magnitude
-                    if dist > 5 then
-                        -- ถ้าอยู่ไกล ให้ Tween บินไป (ทะลุแมพ)
-                        local tweenInfo = TweenInfo.new(dist/50, Enum.EasingStyle.Linear)
+                    if dist > 3 then
+                        -- ปรับความเร็วจาก 50 เป็น 100 (เร็วขึ้น 2 เท่า)
+                        -- บินเป็นแนวตรงด้วย Linear
+                        local tweenInfo = TweenInfo.new(dist/100, Enum.EasingStyle.Linear)
                         TweenService:Create(hrp, tweenInfo, {CFrame = CFrame.new(FARM_POS)}):Play()
                     else
-                        -- ถ้าถึงแล้ว ให้ล็อคความเร็วเป็น 0 (ค้างกลางอากาศ)
-                        hrp.Velocity = Vector3.new(0, 0, 0)
+                        -- ล็อคตำแหน่งให้นิ่งสนิท ไม่ให้สั่น
                         hrp.CFrame = CFrame.new(FARM_POS)
                     end
                 end
-                RunService.Stepped:Wait() -- ใช้ Stepped เพื่อให้ NoClip ทำงานลื่นที่สุด
+                RunService.Stepped:Wait()
             end
+            -- ลบตัวล็อคออกเมื่อปิดฟาร์ม
+            bv:Destroy()
+            bg:Destroy()
         end)
     end
 
     ------------------------------------------------------------------------
-    -- UI CONSTRUCTION (Model A V1 Style)
+    -- UI CONSTRUCTION (Model A V1)
     ------------------------------------------------------------------------
     local THEME = {
         GREEN = Color3.fromRGB(25,255,125),
@@ -786,53 +800,37 @@ registerRight("Home", function(scroll)
     }
 
     local function corner(ui, r)
-        local c = Instance.new("UICorner")
-        c.CornerRadius = UDim.new(0, r or 12)
-        c.Parent = ui
+        local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, r or 12); c.Parent = ui
     end
 
     local function stroke(ui, th, col)
-        local s = Instance.new("UIStroke")
-        s.Thickness = th or 2.2
-        s.Color = col or THEME.GREEN
-        s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-        s.Parent = ui
+        local s = Instance.new("UIStroke"); s.Thickness = th or 2.2; s.Color = col or THEME.GREEN
+        s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border; s.Parent = ui
     end
 
-    -- Header: Farm level 🦆
     local header = Instance.new("TextLabel")
     header.Name = "A_Header"; header.Parent = scroll; header.BackgroundTransparency = 1
-    header.Size = UDim2.new(1, 0, 0, 36); header.Font = Enum.Font.GothamBold
-    header.TextSize = 16; header.TextColor3 = THEME.WHITE
-    header.TextXAlignment = Enum.TextXAlignment.Left; header.Text = "Farm level 🦆"; header.LayoutOrder = 1
+    header.Size = UDim2.new(1, 0, 0, 36); header.Font = Enum.Font.GothamBold; header.TextSize = 16
+    header.TextColor3 = THEME.WHITE; header.TextXAlignment = Enum.TextXAlignment.Left; header.Text = "Farm level 🦆"; header.LayoutOrder = 1
 
-    -- Row 1: Farm level auto
     local function makeFarmSwitch(name, order, labelText)
         local row = Instance.new("Frame")
         row.Name = name; row.Parent = scroll; row.Size = UDim2.new(1, -6, 0, 46)
-        row.BackgroundColor3 = THEME.BLACK; row.LayoutOrder = order
-        corner(row, 12); stroke(row, 2.2, THEME.GREEN)
+        row.BackgroundColor3 = THEME.BLACK; row.LayoutOrder = order; corner(row, 12); stroke(row, 2.2, THEME.GREEN)
 
         local lab = Instance.new("TextLabel")
         lab.Parent = row; lab.BackgroundTransparency = 1; lab.Size = UDim2.new(1, -160, 1, 0)
-        lab.Position = UDim2.new(0, 16, 0, 0); lab.Font = Enum.Font.GothamBold
-        lab.TextSize = 13; lab.TextColor3 = THEME.WHITE
-        lab.TextXAlignment = Enum.TextXAlignment.Left; lab.Text = labelText
+        lab.Position = UDim2.new(0, 16, 0, 0); lab.Font = Enum.Font.GothamBold; lab.TextSize = 13
+        lab.TextColor3 = THEME.WHITE; lab.TextXAlignment = Enum.TextXAlignment.Left; lab.Text = labelText
 
         local sw = Instance.new("Frame")
-        sw.Parent = row; sw.AnchorPoint = Vector2.new(1, 0.5)
-        sw.Position = UDim2.new(1, -12, 0.5, 0); sw.Size = UDim2.fromOffset(52, 26)
-        sw.BackgroundColor3 = THEME.BLACK; corner(sw, 13)
-
+        sw.Parent = row; sw.AnchorPoint = Vector2.new(1, 0.5); sw.Position = UDim2.new(1, -12, 0.5, 0); sw.Size = UDim2.fromOffset(52, 26); sw.BackgroundColor3 = THEME.BLACK; corner(sw, 13)
         local swStroke = Instance.new("UIStroke"); swStroke.Parent = sw; swStroke.Thickness = 1.8
-        local knob = Instance.new("Frame"); knob.Parent = sw; knob.Size = UDim2.fromOffset(22, 22)
-        knob.BackgroundColor3 = THEME.WHITE; knob.Position = UDim2.new(0, 2, 0.5, -11); corner(knob, 11)
+        local knob = Instance.new("Frame"); knob.Parent = sw; knob.Size = UDim2.fromOffset(22, 22); knob.BackgroundColor3 = THEME.WHITE; knob.Position = UDim2.new(0, 2, 0.5, -11); corner(knob, 11)
 
         local function updateVisual(on)
             swStroke.Color = on and THEME.GREEN or THEME.RED
-            TweenService:Create(knob, TweenInfo.new(0.1), {
-                Position = UDim2.new(on and 1 or 0, on and -24 or 2, 0.5, -11)
-            }):Play()
+            TweenService:Create(knob, TweenInfo.new(0.1), {Position = UDim2.new(on and 1 or 0, on and -24 or 2, 0.5, -11)}):Play()
         end
 
         local btn = Instance.new("TextButton")
@@ -847,7 +845,6 @@ registerRight("Home", function(scroll)
     end
 
     makeFarmSwitch("FarmLevelAutoRow", 2, "Farm level auto")
-
     if STATE.AutoFarm then task.defer(applyFarmLogic) end
 end)
 --===== UFO HUB X • SETTINGS — Smoother 🚀 (A V1 • fixed 3 rows) + Runner Save (per-map) + AA1 =====
