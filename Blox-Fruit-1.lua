@@ -691,7 +691,7 @@ end)
 
 registerRight("Home", function(scroll) end)
 registerRight("Settings", function(scroll) end)
---===== UFO HUB X • Home Tab - Farm Level (RAYCAST GROUND FIX) =====
+--===== UFO HUB X • Home Tab - Farm Level (ULTRA FAST ATTACK + GROUND FIX) =====
 
 registerRight("Home", function(scroll)
     local RunService = game:GetService("RunService")
@@ -702,9 +702,10 @@ registerRight("Home", function(scroll)
     local LocalPlayer = Players.LocalPlayer
 
     ------------------------------------------------------------------------
-    -- SETTINGS
+    -- SETTINGS & EXACT COORDINATES
     ------------------------------------------------------------------------
     local FARM_POS = Vector3.new(1194.076, 39.845, 1615.463) 
+    local GROUND_Y = 16.739 -- 🎯 อ้างอิงจาก HRP Position ที่ส่งมา
     local SYSTEM_NAME = "FarmLevelDuck"
     
     local SAVE = (getgenv and getgenv().UFOX_SAVE) or {
@@ -722,25 +723,7 @@ registerRight("Home", function(scroll)
     }
 
     ------------------------------------------------------------------------
-    -- FUNCTION: หาพื้นจริงๆ ใต้เท้าเรา (Raycast)
-    ------------------------------------------------------------------------
-    local function getRealGround(pos)
-        local raycastParams = RaycastParams.new()
-        raycastParams.FilterType = Enum.RaycastFilterType.Exclude
-        -- ไม่เอาตัวเราและศัตรูมาคำนวณเป็นพื้น
-        raycastParams.FilterDescendantsInstances = {LocalPlayer.Character, Workspace:FindFirstChild("Enemies")}
-        
-        -- ยิงแสงจากตัวเราลงไปข้างล่าง 100 หน่วย
-        local raycastResult = Workspace:Raycast(pos, Vector3.new(0, -100, 0), raycastParams)
-        
-        if raycastResult then
-            return raycastResult.Position.Y + 3 -- วางสูงกว่าจุดกระทบนิดหน่อยกันจมดิน
-        end
-        return 32.5 -- ค่าสำรองถ้าไม่เจอพื้น
-    end
-
-    ------------------------------------------------------------------------
-    -- FUNCTION: ดึง Bandit ลงพื้นใต้เท้า (ของจริง)
+    -- FUNCTION: ดึง Bandit (ใช้พิกัด Y จริงตามที่แจ้ง)
     ------------------------------------------------------------------------
     local function getBanditQuest()
         local args = {"StartQuest", "BanditQuest1", 1}
@@ -757,27 +740,19 @@ registerRight("Home", function(scroll)
             sethiddenproperty(LocalPlayer, "SimulationRadius", math.huge)
         end
 
-        -- หาความสูงพื้นดินจริงๆ ณ จุดที่เรายืนอยู่
-        local realGroundY = getRealGround(myHRP.Position)
-
         for _, v in ipairs(enemyFolder:GetChildren()) do
-            if v.Name == "Bandit" and v:FindFirstChild("HumanoidRootPart") and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
-                
-                -- 🎯 วางมอนสเตอร์ไว้ที่พิกัด X, Z ของเรา แต่ Y คือพื้นดินข้างล่าง
-                v.HumanoidRootPart.CFrame = CFrame.new(myHRP.Position.X, realGroundY, myHRP.Position.Z)
-                
-                -- ล็อคให้อยู่กับที่
+            if v.Name == "Bandit" and v:FindFirstChild("HumanoidRootPart") and v.Humanoid.Health > 0 then
+                -- 🎯 วางที่พื้นตามพิกัด Y ที่นายส่งมา (16.739)
+                v.HumanoidRootPart.CFrame = CFrame.new(myHRP.Position.X, GROUND_Y, myHRP.Position.Z)
                 v.HumanoidRootPart.Size = Vector3.new(60, 60, 60)
-                v.HumanoidRootPart.Transparency = 1
                 v.HumanoidRootPart.CanCollide = false
                 v.Humanoid.WalkSpeed = 0
-                v.Humanoid.JumpPower = 0
             end
         end
     end
 
     ------------------------------------------------------------------------
-    -- CORE LOGIC
+    -- CORE LOGIC: ตีไว + กวนตีน + บินเร็ว
     ------------------------------------------------------------------------
     local function applyFarmLogic()
         if STATE.FarmTask then 
@@ -786,6 +761,31 @@ registerRight("Home", function(scroll)
         end
         
         STATE.AutoFarm = true
+        
+        -- 🎯 1. ระบบตีไว + ปิดสั่นกล้อง (Fast Attack)
+        task.spawn(function()
+            while STATE.AutoFarm do
+                pcall(function()
+                    local Combat = require(LocalPlayer.PlayerScripts.CombatFramework)
+                    local Camera = require(LocalPlayer.PlayerScripts.CombatFramework.CameraShaker)
+                    Camera.CameraShakeInstance.CameraShakeState = {FadingIn = 3, FadingOut = 2, Sustained = 0, Inactive = 1}
+                    Combat.activeController.timeToNextAttack = 0
+                end)
+                task.wait()
+            end
+        end)
+
+        -- 🎯 2. ระบบ Auto Click (กวนตีน)
+        task.spawn(function()
+            while STATE.AutoFarm do
+                pcall(function()
+                    game:GetService("VirtualUser"):CaptureController()
+                    game:GetService("VirtualUser"):Button1Down(Vector2.new(1280, 672))
+                end)
+                task.wait()
+            end
+        end)
+
         STATE.FarmTask = task.spawn(function()
             local bv = Instance.new("BodyVelocity")
             bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
@@ -793,19 +793,18 @@ registerRight("Home", function(scroll)
             
             local bg = Instance.new("BodyGyro")
             bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-            bg.P = 5000; bg.D = 50
+            bg.P = 5000
 
             while STATE.AutoFarm do
                 local char = LocalPlayer.Character
                 local hrp = char and char:FindFirstChild("HumanoidRootPart")
-                local hum = char and char:FindFirstChild("Humanoid")
                 
-                if hrp and hum then
+                if hrp then
                     bv.Parent = hrp
                     bg.Parent = hrp
                     bg.CFrame = hrp.CFrame
 
-                    -- 🎯 ระยะโจมตี 50
+                    -- ระยะโจมตี 50
                     pcall(function()
                         if getgenv().Fast and getgenv().Fast.activeController then
                             getgenv().Fast.activeController.hitboxMagnitude = 50
@@ -819,9 +818,9 @@ registerRight("Home", function(scroll)
 
                     -- ถือหมัด
                     local tool = char:FindFirstChild("Combat") or LocalPlayer.Backpack:FindFirstChild("Combat")
-                    if tool and tool.Parent ~= char then hum:EquipTool(tool) end
+                    if tool and tool.Parent ~= char then char.Humanoid:EquipTool(tool) end
 
-                    -- เช็คเควส
+                    -- เควส
                     local questUI = LocalPlayer.PlayerGui:FindFirstChild("Main") and LocalPlayer.PlayerGui.Main:FindFirstChild("Quest")
                     if questUI and not questUI.Visible then getBanditQuest() end
 
@@ -838,7 +837,6 @@ registerRight("Home", function(scroll)
                 end
                 RunService.Stepped:Wait()
             end
-            
             bv:Destroy(); bg:Destroy()
             STATE.FarmTask = nil
         end)
