@@ -693,7 +693,7 @@ registerRight("Home", function(scroll) end)
 registerRight("Settings", function(scroll) end)
 --===== UFO HUB X • Home – Level Farm (Equip Combat + Auto Quest + Fly Straight + HOLD + NoClip + Pull Bandits SNAP-TO-GROUND ONE-SHOT) (Model A V1) =====
 -- Fix:
--- 1) Bandit: snap-to-ground using Model:GetBoundingBox() (no floating)
+-- 1) Bandit: snap-to-ground using Model:GetBoundingBox() (no floating) + Raycast ignores Enemies (no "height creep" after toggle)
 -- 2) Pull: ONE-SHOT only (no keep / no new-spawn pull)
 -- 3) OFF: no slide (hard restore humanoid + brake)
 
@@ -1024,13 +1024,23 @@ registerRight("Home", function(scroll)
         end
     end
 
+    -- ✅ FIX: Raycast หา “พื้นจริง” โดย ignore Enemies ทั้งโฟลเดอร์ (กัน groundY ลอยสูงขึ้นสะสม)
     local function rayGroundHit(xzPos, blacklist)
         local origin = xzPos + Vector3.new(0, 800, 0)
         local dir = Vector3.new(0, -2600, 0)
 
         local params = RaycastParams.new()
         params.FilterType = Enum.RaycastFilterType.Blacklist
-        params.FilterDescendantsInstances = blacklist or {}
+
+        local bl = {}
+        if blacklist then
+            for _,v in ipairs(blacklist) do bl[#bl+1] = v end
+        end
+
+        local enemies = workspace:FindFirstChild("Enemies")
+        if enemies then bl[#bl+1] = enemies end
+
+        params.FilterDescendantsInstances = bl
         params.IgnoreWater = false
 
         return workspace:Raycast(origin, dir, params)
@@ -1060,7 +1070,7 @@ registerRight("Home", function(scroll)
 
     local function snapTargetYForModel(mob, groundY)
         -- ✅ ใช้ความสูงจริงของโมเดล: bottom(bbox) แตะพื้นพอดี
-        local cf, size = mob:GetBoundingBox()
+        local _, size = mob:GetBoundingBox()
         local halfY = (size and size.Y and (size.Y * 0.5)) or 3
         return groundY + halfY
     end
@@ -1072,7 +1082,7 @@ registerRight("Home", function(scroll)
 
         pullingNow = true
 
-        local hit = rayGroundHit(Vector3.new(HOLD_POS.X, HOLD_POS.Y, HOLD_POS.Z), {LP.Character})
+        local hit = rayGroundHit(Vector3.new(HOLD_POS.X, HOLD_POS.Y, HOLD_POS.Z), { LP.Character })
         local groundY = (hit and hit.Position.Y) or HOLD_POS.Y
 
         local startPos, targetPos, collideSnaps = {}, {}, {}
