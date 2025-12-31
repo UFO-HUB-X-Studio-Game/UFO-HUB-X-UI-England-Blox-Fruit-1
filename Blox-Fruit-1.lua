@@ -691,11 +691,11 @@ end)
 
 registerRight("Home", function(scroll) end)
 registerRight("Settings", function(scroll) end)
---===== UFO HUB X • Home – Level Farm (Equip Combat + Auto Quest + Fly Straight + HOLD + NoClip + Pull Bandits Grounded ONE-SHOT) (Model A V1) =====
--- Changes:
--- - Bandit: pull ONCE only (no new spawn pull), grounded, clustered tightly under feet (anti-float)
--- - Switch OFF: restore humanoid fully + brake (no slide)
--- - Fly: straight smooth step-move (no warp), no weird humanoid physics state
+--===== UFO HUB X • Home – Level Farm (Equip Combat + Auto Quest + Fly Straight + HOLD + NoClip + Pull Bandits SNAP-TO-GROUND ONE-SHOT) (Model A V1) =====
+-- Fix:
+-- 1) Bandit: snap-to-ground using Model:GetBoundingBox() (no floating)
+-- 2) Pull: ONE-SHOT only (no keep / no new-spawn pull)
+-- 3) OFF: no slide (hard restore humanoid + brake)
 
 registerRight("Home", function(scroll)
     local Players = game:GetService("Players")
@@ -710,11 +710,14 @@ registerRight("Home", function(scroll)
     local FLY_SPEED = 130
     local ARRIVE_DIST = 1.2
 
-    -- ===== PULL (ONE-SHOT, GROUNDED, CLUSTER) =====
-    local PULL_TIME = 0.35
-    local CLUSTER_RADIUS = 1.8   -- ใต้ตีน “กองแน่นๆ” (กันดันลอย)
-    local CLUSTER_YAW_STEP = 0.55
-    local PULL_ZERO_VEL = true
+    -- ===== PULL (ONE-SHOT, SNAP GROUND) =====
+    local PULL_TIME = 0.25
+
+    -- “เหมือนจุดเดียว” แต่กันซ้อนจนไต่ขึ้น:
+    local CLUSTER_RADIUS = 1.35
+    local CLUSTER_STEP   = 0.75
+
+    local ZERO_VEL = true
 
     -- ===== THEME (A V1) =====
     local THEME = {
@@ -887,17 +890,20 @@ registerRight("Home", function(scroll)
 
     local function restoreHumanoid(hum)
         if savedMove then
-            hum.WalkSpeed = savedMove.ws
-            pcall(function() hum.JumpPower = savedMove.jp end)
-            pcall(function() hum.JumpHeight = savedMove.jh end)
-            hum.AutoRotate = savedMove.ar
-            hum.PlatformStand = savedMove.ps
+            hum.WalkSpeed = savedMove.ws or 16
+            pcall(function() hum.JumpPower = savedMove.jp or 50 end)
+            pcall(function() hum.JumpHeight = savedMove.jh or 7.2 end)
+            hum.AutoRotate = (savedMove.ar ~= false)
+            hum.PlatformStand = (savedMove.ps == true)
             savedMove = nil
         else
             hum.PlatformStand = false
             hum.AutoRotate = true
         end
-        pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end)
+        pcall(function()
+            hum:Move(Vector3.zero, false)
+            hum:ChangeState(Enum.HumanoidStateType.Running)
+        end)
     end
 
     local function setFlyControls(on)
@@ -910,7 +916,7 @@ registerRight("Home", function(scroll)
             pcall(function() hum.JumpPower = 0 end)
             pcall(function() hum.JumpHeight = 0 end)
             hum.AutoRotate = false
-            hum.PlatformStand = false -- ✅ ไม่ใช้ PlatformStand/Physics แล้ว จะไม่ทำให้ปิดแล้วเพี้ยน
+            hum.PlatformStand = false
             hardStop(hrp)
         else
             restoreHumanoid(hum)
@@ -968,15 +974,17 @@ registerRight("Home", function(scroll)
 
     local function startBrake()
         if brakeConn then brakeConn:Disconnect(); brakeConn=nil end
-        local tEnd = os.clock() + 0.35
+        local tEnd = os.clock() + 0.45
         brakeConn = RunService.Heartbeat:Connect(function()
             local _, hum, hrp = getChar()
             if hrp then hardStop(hrp) end
             if hum then
-                -- ✅ ย้ำคืนสภาพกัน “โหมดสไลด์”
                 hum.PlatformStand = false
                 hum.AutoRotate = true
-                pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end)
+                pcall(function()
+                    hum:Move(Vector3.zero, false)
+                    hum:ChangeState(Enum.HumanoidStateType.Running)
+                end)
             end
             if os.clock() >= tEnd then
                 if brakeConn then brakeConn:Disconnect(); brakeConn=nil end
@@ -984,7 +992,7 @@ registerRight("Home", function(scroll)
         end)
     end
 
-    -- ===== Pull Bandits (ONE-SHOT, GROUNDED, CLUSTER UNDER FEET) =====
+    -- ===== Pull Bandits (SNAP TO GROUND via BoundingBox) =====
     local pulledOnce = false
     local pullingNow = false
 
@@ -994,26 +1002,6 @@ registerRight("Home", function(scroll)
 
     local function getMobRoot(m)
         return m:FindFirstChild("HumanoidRootPart") or m:FindFirstChild("HRP") or m:FindFirstChild("RootPart")
-    end
-
-    local function rayGroundY(xzPos, blacklist)
-        local origin = xzPos + Vector3.new(0, 600, 0)
-        local dir = Vector3.new(0, -2000, 0)
-
-        local params = RaycastParams.new()
-        params.FilterType = Enum.RaycastFilterType.Blacklist
-        params.FilterDescendantsInstances = blacklist or {}
-        params.IgnoreWater = false
-
-        local hit = workspace:Raycast(origin, dir, params)
-        return hit and hit.Position.Y or xzPos.Y
-    end
-
-    local function standOffsetY(mob, root)
-        local hum = mob:FindFirstChildOfClass("Humanoid")
-        local hip = (hum and hum.HipHeight) or 2
-        local half = (root and root.Size and root.Size.Y * 0.5) or 1
-        return half + hip
     end
 
     local function snapshotCollide(model)
@@ -1036,6 +1024,18 @@ registerRight("Home", function(scroll)
         end
     end
 
+    local function rayGroundHit(xzPos, blacklist)
+        local origin = xzPos + Vector3.new(0, 800, 0)
+        local dir = Vector3.new(0, -2600, 0)
+
+        local params = RaycastParams.new()
+        params.FilterType = Enum.RaycastFilterType.Blacklist
+        params.FilterDescendantsInstances = blacklist or {}
+        params.IgnoreWater = false
+
+        return workspace:Raycast(origin, dir, params)
+    end
+
     local function collectBandits()
         local enemies = getEnemiesFolder()
         if not enemies then return {} end
@@ -1053,10 +1053,16 @@ registerRight("Home", function(scroll)
     end
 
     local function clusterOffset(i)
-        -- วงเล็กๆ/เกลียวแน่นๆ ใต้ตีน กันซ้อนแล้วไต่ขึ้น
-        local ang = i * CLUSTER_YAW_STEP
-        local r = CLUSTER_RADIUS * math.sqrt((i % 9) / 9) -- แน่นมากๆ
+        local ang = i * CLUSTER_STEP
+        local r = CLUSTER_RADIUS * math.min(1, math.sqrt(i / math.max(1,i)))
         return Vector3.new(math.cos(ang) * r, 0, math.sin(ang) * r)
+    end
+
+    local function snapTargetYForModel(mob, groundY)
+        -- ✅ ใช้ความสูงจริงของโมเดล: bottom(bbox) แตะพื้นพอดี
+        local cf, size = mob:GetBoundingBox()
+        local halfY = (size and size.Y and (size.Y * 0.5)) or 3
+        return groundY + halfY
     end
 
     local function pullBanditsOnce()
@@ -1066,8 +1072,10 @@ registerRight("Home", function(scroll)
 
         pullingNow = true
 
-        local groundY = rayGroundY(Vector3.new(HOLD_POS.X, HOLD_POS.Y, HOLD_POS.Z), {LP.Character})
-        local startPos, targetCFrame, collideSnaps = {}, {}, {}
+        local hit = rayGroundHit(Vector3.new(HOLD_POS.X, HOLD_POS.Y, HOLD_POS.Z), {LP.Character})
+        local groundY = (hit and hit.Position.Y) or HOLD_POS.Y
+
+        local startPos, targetPos, collideSnaps = {}, {}, {}
 
         for idx, mob in ipairs(listBandit) do
             local root = getMobRoot(mob)
@@ -1077,20 +1085,13 @@ registerRight("Home", function(scroll)
 
                 startPos[mob] = root.Position
 
-                local offY = standOffsetY(mob, root)
                 local off = clusterOffset(idx)
-                local targetPos = Vector3.new(HOLD_POS.X, groundY + offY, HOLD_POS.Z) + off
-                targetCFrame[mob] = CFrame.new(targetPos)
+                local ty = snapTargetYForModel(mob, groundY)
+                targetPos[mob] = Vector3.new(HOLD_POS.X, ty, HOLD_POS.Z) + off
 
-                if PULL_ZERO_VEL then
+                if ZERO_VEL then
                     root.AssemblyLinearVelocity = Vector3.zero
                     root.AssemblyAngularVelocity = Vector3.zero
-                end
-
-                local hum = mob:FindFirstChildOfClass("Humanoid")
-                if hum then
-                    hum.PlatformStand = false
-                    hum.AutoRotate = true
                 end
             end
         end
@@ -1104,11 +1105,11 @@ registerRight("Home", function(scroll)
                     local root = getMobRoot(mob)
                     local hum = mob:FindFirstChildOfClass("Humanoid")
                     local sp = startPos[mob]
-                    local tp = targetCFrame[mob]
+                    local tp = targetPos[mob]
                     if root and hum and hum.Health > 0 and sp and tp then
-                        local pos = sp:Lerp(tp.Position, a)
+                        local pos = sp:Lerp(tp, a)
                         pcall(function()
-                            if PULL_ZERO_VEL then
+                            if ZERO_VEL then
                                 root.AssemblyLinearVelocity = Vector3.zero
                                 root.AssemblyAngularVelocity = Vector3.zero
                             end
@@ -1121,7 +1122,7 @@ registerRight("Home", function(scroll)
                 RunService.Heartbeat:Wait()
             end
 
-            -- ✅ ปล่อยทันที (ไม่ค้าง bandit)
+            -- ✅ ปล่อยทันที (ไม่ค้าง)
             for _, mob in ipairs(listBandit) do
                 local snap = collideSnaps[mob]
                 if snap then restoreCollide(snap) end
@@ -1147,7 +1148,6 @@ registerRight("Home", function(scroll)
         equipCombat()
         if not questVisible() then startQuest() end
 
-        -- ถึงแล้วค่อยดึงครั้งเดียว
         if arrived then
             pullBanditsOnce()
         end
