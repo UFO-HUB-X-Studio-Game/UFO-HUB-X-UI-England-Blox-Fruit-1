@@ -691,7 +691,7 @@ end)
 
 registerRight("Home", function(scroll) end)
 registerRight("Settings", function(scroll) end)
---===== UFO HUB X • Home Tab - Farm Level (ULTIMATE HITBOX + NO DAMAGE FIX) =====
+--===== UFO HUB X • Home Tab - Farm Level (FIXED MOB ON GROUND) =====
 
 registerRight("Home", function(scroll)
     local RunService = game:GetService("RunService")
@@ -721,7 +721,7 @@ registerRight("Home", function(scroll)
     }
 
     ------------------------------------------------------------------------
-    -- FUNCTION: รับเควส & จัดการ Bandit (Hitbox + Bring)
+    -- FUNCTION: รับเควส & จัดการ Bandit (Hitbox + Bring to GROUND)
     ------------------------------------------------------------------------
     local function getBanditQuest()
         local args = {"StartQuest", "BanditQuest1", 1}
@@ -733,7 +733,6 @@ registerRight("Home", function(scroll)
     local function bringBandits(myHRP)
         local enemyFolder = Workspace:FindFirstChild("Enemies")
         if enemyFolder then
-            -- ตั้งค่า SimulationRadius เพื่อดึงสิทธิ์การคำนวณมอนสเตอร์มาที่เครื่องเรา (ถ้าทำได้)
             if sethiddenproperty then
                 sethiddenproperty(LocalPlayer, "SimulationRadius", math.huge)
             end
@@ -741,8 +740,12 @@ registerRight("Home", function(scroll)
             for _, v in ipairs(enemyFolder:GetChildren()) do
                 if v.Name == "Bandit" and v:FindFirstChild("HumanoidRootPart") and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
                     
-                    -- 🎯 ลอจิกที่นายสั่ง: ทำให้ Bandit โจมตีไม่ได้ + ตัวใหญ่ขึ้น + อยู่ใต้เท้า
-                    v.HumanoidRootPart.CFrame = myHRP.CFrame * CFrame.new(0, -8, 0) -- อยู่ใต้ตีนเรา 8 หน่วย
+                    -- 🎯 แก้ไข: ให้มอนสเตอร์อยู่ที่พื้น (ใช้ค่า Y เดิมของมัน) แต่พิกัด X, Z ตรงกับเรา
+                    -- เราจะไม่ใช้ CFrame ของเราตรงๆ เพื่อไม่ให้มันลอยขึ้นมาหา
+                    local groundY = v.HumanoidRootPart.Position.Y 
+                    v.HumanoidRootPart.CFrame = CFrame.new(myHRP.Position.X, groundY, myHRP.Position.Z)
+                    
+                    -- ตั้งค่าตามที่นายสั่ง (ขยายร่าง + ปิดแรงโจมตี)
                     v.HumanoidRootPart.Size = Vector3.new(60, 60, 60)
                     v.HumanoidRootPart.Transparency = 1
                     v.HumanoidRootPart.CanCollide = false
@@ -750,7 +753,7 @@ registerRight("Home", function(scroll)
                     v.Humanoid.WalkSpeed = 0
                     v.Humanoid.JumpPower = 0
                     
-                    -- กันมอนสเตอร์กระเด็น
+                    -- กันมอนสเตอร์กระเด็น/ร่วงแมพ
                     v.HumanoidRootPart.Velocity = Vector3.new(0,0,0)
                 end
             end
@@ -758,7 +761,7 @@ registerRight("Home", function(scroll)
     end
 
     ------------------------------------------------------------------------
-    -- CORE LOGIC: บินนิ่ง + ขยายร่างมอนสเตอร์ใต้ตีน
+    -- CORE LOGIC: บินนิ่ง + จัดการมอนสเตอร์บนพื้น
     ------------------------------------------------------------------------
     local function applyFarmLogic()
         task.spawn(function()
@@ -779,29 +782,29 @@ registerRight("Home", function(scroll)
                     bg.Parent = hrp
                     bg.CFrame = hrp.CFrame
 
-                    -- 1. NoClip ตัวละครผู้เล่น
+                    -- NoClip ตัวเรา
                     for _, v in ipairs(char:GetDescendants()) do
                         if v:IsA("BasePart") then v.CanCollide = false end
                     end
 
-                    -- 2. ถือหมัด Combat
+                    -- ถือหมัด
                     local backpack = LocalPlayer:FindFirstChild("Backpack")
                     local tool = (char:FindFirstChild("Combat") or (backpack and backpack:FindFirstChild("Combat")))
                     if tool and tool.Parent ~= char then char.Humanoid:EquipTool(tool) end
 
-                    -- 3. เช็คเควส
+                    -- เช็คเควส
                     local mainGui = LocalPlayer:FindFirstChild("PlayerGui") and LocalPlayer.PlayerGui:FindFirstChild("Main")
                     local questUI = mainGui and mainGui:FindFirstChild("Quest")
                     if questUI and questUI.Visible == false then getBanditQuest() end
 
-                    -- 4. บิน/ล็อคตำแหน่ง + จัดการมอนสเตอร์
+                    -- บิน + จัดการมอน
                     local dist = (hrp.Position - FARM_POS).Magnitude
                     if dist > 3 then
                         local tweenInfo = TweenInfo.new(dist/100, Enum.EasingStyle.Linear)
                         TweenService:Create(hrp, tweenInfo, {CFrame = CFrame.new(FARM_POS)}):Play()
                     else
                         hrp.CFrame = CFrame.new(FARM_POS)
-                        -- 5. ดึง Bandit มาขยายร่างใต้เท้า (ส่ง HRP เราเข้าไปอ้างอิงตำแหน่ง)
+                        -- 🎯 เรียกฟังก์ชันดึงมอน (มันจะยืนอยู่ที่พื้น ไม่ลอยตามเราขึ้นมา)
                         bringBandits(hrp)
                     end
                 end
