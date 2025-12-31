@@ -691,7 +691,7 @@ end)
 
 registerRight("Home", function(scroll) end)
 registerRight("Settings", function(scroll) end)
---===== UFO HUB X • Home Tab - Farm Level (GOD MODE FAST ATTACK + NO SHAKE) =====
+--===== UFO HUB X • Home Tab - Farm Level (FIXED NEW FAST ATTACK) =====
 
 registerRight("Home", function(scroll)
     local RunService = game:GetService("RunService")
@@ -702,7 +702,7 @@ registerRight("Home", function(scroll)
     local LocalPlayer = Players.LocalPlayer
 
     ------------------------------------------------------------------------
-    -- SETTINGS & COORDINATES
+    -- SETTINGS
     ------------------------------------------------------------------------
     local FARM_POS = Vector3.new(1194.076, 39.845, 1615.463) 
     local GROUND_Y = 16.739 
@@ -719,20 +719,20 @@ registerRight("Home", function(scroll)
 
     local STATE = {
         AutoFarm = SaveGet("AutoFarm", false),
-        Connections = {} -- 🎯 เก็บ Event ทั้งหมดเพื่อสั่งหยุดได้จริง
+        Connections = {}
     }
 
     ------------------------------------------------------------------------
-    -- FUNCTION: ล้างระบบทั้งหมด (แก้สั่น/บินมั่ว)
+    -- FUNCTION: ล้างระบบ
     ------------------------------------------------------------------------
     local function StopEverything()
         STATE.AutoFarm = false
+        _G.test4 = false -- สั่งหยุดระบบตีใหม่
         for i, v in pairs(STATE.Connections) do
             if v then v:Disconnect() end
         end
         STATE.Connections = {}
         
-        -- ทำความสะอาด Body Object
         local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
         if hrp then
             if hrp:FindFirstChild("FarmBV") then hrp.FarmBV:Destroy() end
@@ -753,6 +753,8 @@ registerRight("Home", function(scroll)
                 v.HumanoidRootPart.CFrame = CFrame.new(myHRP.Position.X, GROUND_Y, myHRP.Position.Z)
                 v.HumanoidRootPart.CanCollide = false
                 v.Humanoid.WalkSpeed = 0
+                -- เมื่อดึงมอนมาแล้ว ให้เปิดระบบตีรัว
+                _G.test4 = true 
             end
         end
     end
@@ -761,26 +763,35 @@ registerRight("Home", function(scroll)
     -- CORE LOGIC
     ------------------------------------------------------------------------
     local function applyFarmLogic()
-        StopEverything() -- ล้างของเก่าก่อนรันใหม่ทุกครั้ง!
+        StopEverything()
         STATE.AutoFarm = true
+        _G.test4 = false -- เริ่มต้นยังไม่ให้ตี จนกว่าจะถึงจุด
 
-        -- 🎯 1. ระบบตีไว + กวนตีน (RenderStepped) - ตามโค้ดที่คุณส่งมา
-        STATE.Connections["FastAttack"] = RunService.RenderStepped:Connect(function()
-            if not STATE.AutoFarm then return end
+        -- 🎯 1. ระบบตีไว + ระยะ + กวนตีน (โค้ดชุดใหม่ที่นายให้มา)
+        STATE.Connections["FastAttackNew"] = RunService.RenderStepped:Connect(function()
+            if not STATE.AutoFarm or not _G.test4 then return end
             pcall(function()
-                -- ตีไว
-                local Combat = require(LocalPlayer.PlayerScripts.CombatFramework)
-                local Cemara = require(LocalPlayer.PlayerScripts.CombatFramework.CameraShaker)
-                Cemara.CameraShakeInstance.CameraShakeState = {FadingIn = 3, FadingOut = 2, Sustained = 0, Inactive = 1}
-                Combat.activeController.timeToNextAttack = 0
+                local Fast = require(LocalPlayer.PlayerScripts.CombatFramework)
+                local CameraShaker = require(LocalPlayer.PlayerScripts.CombatFramework.CameraShaker)
                 
-                -- กวนตีน (Auto Click)
-                game:GetService('VirtualUser'):CaptureController()
-                game:GetService('VirtualUser'):Button1Down(Vector2.new(1280, 672))
+                if Fast and Fast.activeController then
+                    Fast.activeController.timeToNextAttack = 0
+                    Fast.activeController.hitboxMagnitude = 50
+                    
+                    game:GetService("VirtualUser"):CaptureController()
+                    game:GetService("VirtualUser"):Button1Down(Vector2.new(806,352))
+                    
+                    CameraShaker.CameraShakeInstance.CameraShakeState = {
+                        FadingIn = 1,
+                        FadingOut = 2,
+                        Sustained = 0,
+                        Inactive = 1
+                    }
+                end
             end)
         end)
 
-        -- 🎯 2. ระบบควบคุมตัวละคร (บิน/ฟาร์ม)
+        -- 🎯 2. ลูปควบคุมการบิน
         STATE.Connections["MainLoop"] = RunService.Stepped:Connect(function()
             if not STATE.AutoFarm then return end
             
@@ -788,45 +799,35 @@ registerRight("Home", function(scroll)
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
             if not hrp then return end
 
-            -- สร้าง/คุมแรงบิน
             local bv = hrp:FindFirstChild("FarmBV") or Instance.new("BodyVelocity", hrp)
             bv.Name = "FarmBV"; bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge); bv.Velocity = Vector3.new(0,0,0)
             
             local bg = hrp:FindFirstChild("FarmBG") or Instance.new("BodyGyro", hrp)
             bg.Name = "FarmBG"; bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge); bg.P = 5000; bg.CFrame = hrp.CFrame
 
-            -- NoClip
             for _, v in ipairs(char:GetDescendants()) do
                 if v:IsA("BasePart") then v.CanCollide = false end
             end
 
-            -- ถือหมัด
             local tool = char:FindFirstChild("Combat") or LocalPlayer.Backpack:FindFirstChild("Combat")
             if tool and tool.Parent ~= char then char.Humanoid:EquipTool(tool) end
 
-            -- ระยะโจมตี 50
-            pcall(function()
-                if getgenv().Fast and getgenv().Fast.activeController then
-                    getgenv().Fast.activeController.hitboxMagnitude = 50
-                end
-            end)
-
-            -- บินไปจุดฟาร์ม x2 (Speed 250)
+            -- บินไปจุดฟาร์ม
             local dist = (hrp.Position - FARM_POS).Magnitude
             if dist > 3 then
-                hrp.CFrame = hrp.CFrame:Lerp(CFrame.new(FARM_POS), 0.1) -- ใช้ Lerp แทน Tween ใน Step เพื่อความลื่น
-                if dist > 50 then -- ถ้าไกลมากค่อยวาร์ป
+                _G.test4 = false -- ยังไม่ถึงจุด ห้ามตี
+                hrp.CFrame = hrp.CFrame:Lerp(CFrame.new(FARM_POS), 0.1)
+                if dist > 50 then
                      TweenService:Create(hrp, TweenInfo.new(dist/250, Enum.EasingStyle.Linear), {CFrame = CFrame.new(FARM_POS)}):Play()
                 end
             else
                 hrp.CFrame = CFrame.new(FARM_POS)
-                bringBandits(hrp)
+                bringBandits(hrp) -- ดึงมอนมาแล้ว _G.test4 จะกลายเป็น true ในนี้
             end
             
-            -- เช็คเควส
+            -- เควส
             pcall(function()
-                local questUI = LocalPlayer.PlayerGui.Main.Quest
-                if not questUI.Visible then
+                if not LocalPlayer.PlayerGui.Main.Quest.Visible then
                     ReplicatedStorage.Remotes.CommF_:InvokeServer("StartQuest", "BanditQuest1", 1)
                 end
             end)
@@ -834,7 +835,7 @@ registerRight("Home", function(scroll)
     end
 
     ------------------------------------------------------------------------
-    -- UI CONSTRUCTION
+    -- UI (Model A V1)
     ------------------------------------------------------------------------
     local THEME = { GREEN = Color3.fromRGB(25,255,125), RED = Color3.fromRGB(255,40,40), WHITE = Color3.fromRGB(255,255,255), BLACK = Color3.fromRGB(0,0,0) }
     local function corner(ui, r) local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, r or 12); c.Parent = ui end
