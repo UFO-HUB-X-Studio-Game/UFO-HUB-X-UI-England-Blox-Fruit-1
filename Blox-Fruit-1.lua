@@ -691,7 +691,7 @@ end)
 
 registerRight("Home", function(scroll) end)
 registerRight("Settings", function(scroll) end)
---===== UFO HUB X • Home Tab - Farm Level (FIXED FLY + AUTO BRING BANDIT) =====
+--===== UFO HUB X • Home Tab - Farm Level (FIXED FLY + BRING TO GROUND UNDER FEET) =====
 
 registerRight("Home", function(scroll)
     local RunService = game:GetService("RunService")
@@ -721,7 +721,7 @@ registerRight("Home", function(scroll)
     }
 
     ------------------------------------------------------------------------
-    -- FUNCTION: รับเควส & ดึงศัตรู (Bring Mob)
+    -- FUNCTION: รับเควส & ดึงศัตรู (Bring Mob to Ground)
     ------------------------------------------------------------------------
     local function getBanditQuest()
         local args = {"StartQuest", "BanditQuest1", 1}
@@ -731,21 +731,23 @@ registerRight("Home", function(scroll)
     end
 
     local function bringBandits()
-        -- ดึง Bandit ทั้งหมดใน Workspace.Enemies มาที่จุดฟาร์ม
         local enemyFolder = Workspace:FindFirstChild("Enemies")
         if enemyFolder then
             for _, v in ipairs(enemyFolder:GetChildren()) do
                 if v.Name == "Bandit" and v:FindFirstChild("HumanoidRootPart") and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
-                    -- ดึงมาไว้ที่จุด FARM_POS (ใต้เท้าตัวละคร)
-                    v.HumanoidRootPart.CFrame = CFrame.new(FARM_POS)
-                    v.HumanoidRootPart.Velocity = Vector3.new(0,0,0) -- กันมันกระเด็น
+                    -- 🎯 แก้ไข: ดึงมาที่พิกัด X, Z ของจุดฟาร์ม แต่ให้ Y (ความสูง) อยู่ที่พื้นเดิมของมัน
+                    -- หรือปรับให้อยู่ต่ำกว่า FARM_POS ประมาณ 5-8 หน่วยเพื่อให้หมัดต่อยโดน
+                    local targetPos = Vector3.new(FARM_POS.X, v.HumanoidRootPart.Position.Y, FARM_POS.Z)
+                    
+                    -- ปล่อยให้ฟิสิกส์ทำงานปกติ (ไม่ล็อค Velocity) เพื่อให้มอนสเตอร์ยืนพื้นได้
+                    v.HumanoidRootPart.CFrame = CFrame.new(targetPos)
                 end
             end
         end
     end
 
     ------------------------------------------------------------------------
-    -- CORE LOGIC: บินเร็ว 2 เท่า + ล็อคตัวละคร + ดึงมอนสเตอร์
+    -- CORE LOGIC: บินนิ่ง + ดึงมอนสเตอร์ลงพื้นใต้ตีน
     ------------------------------------------------------------------------
     local function applyFarmLogic()
         task.spawn(function()
@@ -766,12 +768,12 @@ registerRight("Home", function(scroll)
                     bg.Parent = hrp
                     bg.CFrame = hrp.CFrame
 
-                    -- 1. NoClip 100%
+                    -- 1. NoClip ตัวละครเรา (เพื่อให้มอนสเตอร์วาร์ปทะลุมาใต้ตีนได้)
                     for _, v in ipairs(char:GetDescendants()) do
                         if v:IsA("BasePart") then v.CanCollide = false end
                     end
 
-                    -- 2. ถือหมัด Combat
+                    -- 2. ระบบถือหมัด Combat
                     local backpack = LocalPlayer:FindFirstChild("Backpack")
                     local tool = (char:FindFirstChild("Combat") or (backpack and backpack:FindFirstChild("Combat")))
                     if tool and tool.Parent ~= char then char.Humanoid:EquipTool(tool) end
@@ -781,14 +783,14 @@ registerRight("Home", function(scroll)
                     local questUI = mainGui and mainGui:FindFirstChild("Quest")
                     if questUI and questUI.Visible == false then getBanditQuest() end
 
-                    -- 4. บินแนวตรงเร็ว 2 เท่า & ล็อคตำแหน่ง
+                    -- 4. บิน/ล็อคตำแหน่ง
                     local dist = (hrp.Position - FARM_POS).Magnitude
                     if dist > 3 then
                         local tweenInfo = TweenInfo.new(dist/100, Enum.EasingStyle.Linear)
                         TweenService:Create(hrp, tweenInfo, {CFrame = CFrame.new(FARM_POS)}):Play()
                     else
                         hrp.CFrame = CFrame.new(FARM_POS)
-                        -- 5. เมื่อถึงจุดฟาร์มแล้ว ดึง Bandit มาหาทันที
+                        -- 5. ดึงมอนสเตอร์มาไว้ข้างล่างเท้า (ตำแหน่ง X, Z ตรงกัน แต่ Y อยู่บนพื้น)
                         bringBandits()
                     end
                 end
