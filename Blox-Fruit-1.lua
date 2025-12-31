@@ -691,15 +691,15 @@ end)
 
 registerRight("Home", function(scroll) end)
 registerRight("Settings", function(scroll) end)
---===== UFO HUB X • Home – Level Farm (Equip Combat + Auto Quest + Fly Only) (Model A V1) =====
+--===== UFO HUB X • Home – Level Farm (Equip Combat + Auto Quest + Fly & HOLD + NoClip) (Model A V1) =====
 -- Header : "Level Farm ⚔️"
 -- Row 1  : "Auto Level Farm"
 -- Logic  :
 --   • Equip Combat อัตโนมัติ
 --   • ถ้า Quest UI หาย (Visible = false) → รับภารกิจใหม่ (BanditQuest1)
 --   • บินไปจุดที่กำหนดแบบ “ไม่วาร์ป” (ค่อยๆลอยไป)
---   • “โหมดลอย/นิ่ง” ใช้เฉพาะตอนบินเท่านั้น
---   • ถึงจุดแล้ว → คืนสภาพปกติ 100% ทันที
+--   • ทะลุแมพ (NoClip) ตอนทำงาน
+--   • ถึงแล้ว “ค้างนิ่ง” อยู่ที่เดิม (ไม่ตก/ไม่ไหล)
 
 registerRight("Home", function(scroll)
     local Players = game:GetService("Players")
@@ -781,7 +781,7 @@ registerRight("Home", function(scroll)
         return LP:FindFirstChildOfClass("Backpack")
     end
 
-    -- Combat logic
+    -- ===== Combat =====
     local function isCombatEquipped()
         local ch = LP.Character
         local bp = getBackpack()
@@ -805,7 +805,7 @@ registerRight("Home", function(scroll)
         end
     end
 
-    -- ===== QUEST LOGIC =====
+    -- ===== QUEST =====
     local function questVisible()
         local pg = LP:FindFirstChild("PlayerGui")
         local main = pg and pg:FindFirstChild("Main")
@@ -823,16 +823,54 @@ registerRight("Home", function(scroll)
         end)
     end
 
-    -- ===== FLY (NO WARP) + TEMP HOLD ONLY WHILE FLYING =====
+    -- ===== NoClip (ทะลุแมพ) =====
+    local noclipOn = false
+    local noclipConn
+    local originalCollide = {} -- [BasePart] = bool
+
+    local function applyNoClipOnce(ch)
+        for _,d in ipairs(ch:GetDescendants()) do
+            if d:IsA("BasePart") then
+                if originalCollide[d] == nil then
+                    originalCollide[d] = d.CanCollide
+                end
+                d.CanCollide = false
+            end
+        end
+    end
+
+    local function enableNoClip()
+        noclipOn = true
+        if noclipConn then noclipConn:Disconnect(); noclipConn=nil end
+        noclipConn = RunService.Stepped:Connect(function()
+            if not noclipOn then return end
+            local ch = LP.Character
+            if ch then
+                applyNoClipOnce(ch)
+            end
+        end)
+    end
+
+    local function disableNoClip()
+        noclipOn = false
+        if noclipConn then noclipConn:Disconnect(); noclipConn=nil end
+        for part, was in pairs(originalCollide) do
+            if part and part.Parent then
+                part.CanCollide = was
+            end
+        end
+        originalCollide = {}
+    end
+
+    -- ===== Fly + HOLD (ค้างนิ่ง) =====
     local anchorPart
     local holdOn = false
-    local flyActive = false
     local arrived = false
 
     local function ensureAnchor()
         if anchorPart and anchorPart.Parent then return anchorPart end
         local p = Instance.new("Part")
-        p.Name = "UFOX_LF_FlyAnchor"
+        p.Name = "UFOX_LF_HoldAnchor"
         p.Anchored = true
         p.CanCollide = false
         p.CanTouch = false
@@ -844,9 +882,9 @@ registerRight("Home", function(scroll)
         return p
     end
 
-    local function clearHoldAndRestoreNormal()
+    local function clearHold()
         holdOn = false
-        flyActive = false
+        arrived = false
 
         local ch, hum, hrp = getChar()
         if ch then
@@ -869,12 +907,12 @@ registerRight("Home", function(scroll)
         end
     end
 
-    local function applyTempHoldForFlight()
+    local function applyHoldAt(pos)
         local ch, hum, hrp = getChar()
         if not (ch and hum and hrp) then return end
 
         local a = ensureAnchor()
-        a.Position = hrp.Position
+        a.Position = pos
 
         -- clear old
         for _,name in ipairs({"UFOX_LF_Att0","UFOX_LF_Att1","UFOX_LF_AP","UFOX_LF_AO"}) do
@@ -882,11 +920,11 @@ registerRight("Home", function(scroll)
             if obj then obj:Destroy() end
         end
 
-        -- only during flight
+        -- ทำให้นิ่ง + ไม่ตก/ไม่ไหล
         pcall(function()
             hum.Sit = false
-            hum.PlatformStand = true
-            hum.AutoRotate = false
+            hum.AutoRotate = true
+            hum.PlatformStand = false -- ให้ดู “ปกติ” มากกว่า PlatformStand
         end)
 
         hrp.AssemblyLinearVelocity = Vector3.zero
@@ -923,15 +961,13 @@ registerRight("Home", function(scroll)
         ao.Parent = hrp
 
         holdOn = true
-        flyActive = true
-        arrived = false
     end
 
-    local FLY_SPEED = 65      -- studs/sec
-    local ARRIVE_DIST = 1.2   -- studs
+    -- Smooth flight: move anchor toward target each frame (HRP follows)
+    local FLY_SPEED = 65
+    local ARRIVE_DIST = 1.2
 
     local function flyStep(dt)
-        if not flyActive then return end
         if not holdOn then return end
         if not (anchorPart and anchorPart.Parent) then return end
 
@@ -940,22 +976,24 @@ registerRight("Home", function(scroll)
         local dist = to.Magnitude
 
         if dist <= ARRIVE_DIST then
-            -- snap anchor only (ไม่แตะ HRP โดยตรง) แล้ว “ปล่อย” ให้ปกติ
             anchorPart.Position = HOLD_POS
-            if not arrived then
-                arrived = true
-                -- ปล่อยหลังจากเฟรมนี้ เพื่อให้ HRP ตามมาทัน
-                task.defer(function()
-                    if arrived then
-                        clearHoldAndRestoreNormal()
-                    end
-                end)
-            end
+            arrived = true
             return
         end
 
         local step = math.min(dist, FLY_SPEED * dt)
         anchorPart.Position = cur + (to / dist) * step
+    end
+
+    -- กัน “ไหล/ตก” ตอนค้างนิ่ง (ค้างอยู่ที่เดิมจริงๆ)
+    local function enforceHold()
+        if not (holdOn and arrived and anchorPart) then return end
+        anchorPart.Position = HOLD_POS
+        local ch, hum, hrp = getChar()
+        if hrp then
+            hrp.AssemblyLinearVelocity = Vector3.zero
+            hrp.AssemblyAngularVelocity = Vector3.zero
+        end
     end
 
     -- ===== AUTO LOOP =====
@@ -967,8 +1005,12 @@ registerRight("Home", function(scroll)
     local function tick(dt)
         if not ENABLED then return end
 
-        -- บินเฉพาะช่วงแรก จนกว่าจะถึง แล้วจะคืนปกติเอง
-        flyStep(dt)
+        -- Fly until arrive
+        if not arrived then
+            flyStep(dt)
+        else
+            enforceHold()
+        end
 
         local now = os.clock()
         if now - last < INTERVAL then return end
@@ -982,28 +1024,41 @@ registerRight("Home", function(scroll)
 
     local function setEnabled(v)
         ENABLED = v and true or false
-        if conn then conn:Disconnect() conn=nil end
+        if conn then conn:Disconnect(); conn=nil end
 
         if ENABLED then
             last = 0
-            -- เริ่ม “บิน” ทันทีตอนเปิด (ไม่วาร์ป)
-            applyTempHoldForFlight()
+            arrived = false
+
+            enableNoClip()
+
+            -- เริ่มจับไว้ที่ตำแหน่งปัจจุบันก่อน แล้วค่อยบิน
+            local ch, hum, hrp = getChar()
+            if hrp then
+                applyHoldAt(hrp.Position)
+            end
+
             conn = RunService.Heartbeat:Connect(function(dt)
                 tick(dt)
             end)
         else
-            arrived = false
-            clearHoldAndRestoreNormal()
+            disableNoClip()
+            clearHold()
         end
     end
 
-    -- รีเกิดแล้วให้บินใหม่ (และปล่อยปกติเมื่อถึง)
+    -- รีเกิดแล้วกลับมาจับ+บินใหม่ (ยังทะลุแมพเหมือนเดิม)
     LP.CharacterAdded:Connect(function()
         if ENABLED then
-            task.wait(0.2)
-            arrived = false
-            clearHoldAndRestoreNormal()
-            applyTempHoldForFlight()
+            task.wait(0.25)
+            disableNoClip()
+            clearHold()
+            enableNoClip()
+
+            local ch, hum, hrp = getChar()
+            if hrp then
+                applyHoldAt(hrp.Position)
+            end
         end
     end)
 
