@@ -691,577 +691,218 @@ end)
 
 registerRight("Home", function(scroll) end)
 registerRight("Settings", function(scroll) end)
---===== UFO HUB X • Home – Level Farm (Equip Combat + Auto Quest + Fly Straight + HOLD + NoClip + Pull Bandits SNAP-TO-GROUND ONE-SHOT) (Model A V1) =====
--- Fix:
--- 1) Bandit: snap-to-ground using Model:GetBoundingBox() (no floating) + Raycast ignores Enemies (no "height creep" after toggle)
--- 2) Pull: ONE-SHOT only (no keep / no new-spawn pull)
--- 3) OFF: no slide (hard restore humanoid + brake)
+--===== UFO HUB X • Home – Level Farm (FIXED VERSION) =====
+if sethiddenproperty then
+    sethiddenproperty(game.Players.LocalPlayer,"SimulationRadius",math.huge)
+end
 
 registerRight("Home", function(scroll)
-    local Players = game:GetService("Players")
-    local RunService = game:GetService("RunService")
-    local ReplicatedStorage = game:GetService("ReplicatedStorage")
-    local LP = Players.LocalPlayer
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local LP = Players.LocalPlayer
 
-    -- ===== TARGET =====
-    local HOLD_POS = Vector3.new(1192.798, 35.068, 1615.625)
+-- ===== TARGET =====  
+local HOLD_POS = Vector3.new(1192.798, 35.068, 1615.625)  
 
-    -- ===== FLY =====
-    local FLY_SPEED = 130
-    local ARRIVE_DIST = 1.2
+-- ===== FLY =====  
+local FLY_SPEED = 130  
+local ARRIVE_DIST = 1.2  
 
-    -- ===== PULL (ONE-SHOT, SNAP GROUND) =====
-    local PULL_TIME = 0.25
+-- ===== PULL CONFIG =====  
+local PULL_TIME = 0.25  
+local CLUSTER_RADIUS = 1.35  
+local CLUSTER_STEP   = 0.75  
+local ZERO_VEL = true  
 
-    -- “เหมือนจุดเดียว” แต่กันซ้อนจนไต่ขึ้น:
-    local CLUSTER_RADIUS = 1.35
-    local CLUSTER_STEP   = 0.75
+-- ===== THEME =====  
+local THEME = {  
+    GREEN = Color3.fromRGB(25,255,125),  
+    RED   = Color3.fromRGB(255,40,40),  
+    WHITE = Color3.fromRGB(255,255,255),  
+    BLACK = Color3.fromRGB(0,0,0),  
+}  
 
-    local ZERO_VEL = true
+local function corner(ui,r)  
+    local c = Instance.new("UICorner")  
+    c.CornerRadius = UDim.new(0, r or 12)  
+    c.Parent = ui  
+end  
 
-    -- ===== THEME (A V1) =====
-    local THEME = {
-        GREEN = Color3.fromRGB(25,255,125),
-        RED   = Color3.fromRGB(255,40,40),
-        WHITE = Color3.fromRGB(255,255,255),
-        BLACK = Color3.fromRGB(0,0,0),
-    }
+local function stroke(ui,t,col)  
+    local s = Instance.new("UIStroke")  
+    s.Thickness = t or 2.2  
+    s.Color = col or THEME.GREEN  
+    s.Parent = ui  
+end  
 
-    local function corner(ui,r)
-        local c = Instance.new("UICorner")
-        c.CornerRadius = UDim.new(0, r or 12)
-        c.Parent = ui
+-- ===== CLEANUP =====  
+for _,n in ipairs({"LF_Header","LF_Row1"}) do  
+    local o = scroll:FindFirstChild(n)  
+    if o then o:Destroy() end  
+end  
+
+local list = scroll:FindFirstChildOfClass("UIListLayout")  
+if not list then  
+    list = Instance.new("UIListLayout", scroll)  
+    list.Padding = UDim.new(0,12)  
+    list.SortOrder = Enum.SortOrder.LayoutOrder  
+end  
+scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y  
+
+local base = 0  
+for _,c in ipairs(scroll:GetChildren()) do  
+    if c:IsA("GuiObject") and c ~= list then  
+        base = math.max(base, c.LayoutOrder or 0)  
+    end  
+end  
+
+-- ===== HEADER =====  
+local header = Instance.new("TextLabel")  
+header.Name = "LF_Header"  
+header.Parent = scroll  
+header.Size = UDim2.new(1,0,0,36)  
+header.BackgroundTransparency = 1  
+header.Font = Enum.Font.GothamBold  
+header.TextSize = 16  
+header.TextColor3 = THEME.WHITE  
+header.TextXAlignment = Enum.TextXAlignment.Left  
+header.Text = "Level Farm ⚔️"  
+header.LayoutOrder = base + 1  
+
+-- ===== HELPERS =====  
+local function getChar()  
+    local ch = LP.Character  
+    if not ch then return end  
+    local hum = ch:FindFirstChildOfClass("Humanoid")  
+    local hrp = ch:FindFirstChild("HumanoidRootPart")  
+    if hum and hrp and hum.Health > 0 then return ch, hum, hrp end  
+end  
+
+local function equipCombat()  
+    local ch, hum = getChar()  
+    local bp = LP:FindFirstChildOfClass("Backpack")  
+    if not (ch and hum and bp) then return end  
+    if ch:FindFirstChild("Combat") then return end  
+    local tool = bp:FindFirstChild("Combat")  
+    if tool then pcall(function() hum:EquipTool(tool) end) end  
+end  
+
+local function startQuest()  
+    pcall(function()  
+        ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("StartQuest","BanditQuest1",1)  
+    end)  
+end  
+
+-- ===== NO CLIP =====  
+local noclipOn = false  
+local noclipConn  
+enableNoClip = function()  
+    noclipOn = true  
+    noclipConn = RunService.Stepped:Connect(function()  
+        if not noclipOn then return end  
+        local ch = LP.Character  
+        if ch then  
+            for _,d in ipairs(ch:GetDescendants()) do  
+                if d:IsA("BasePart") then d.CanCollide = false end  
+            end  
+        end  
+    end)  
+end  
+
+-- ===== MAIN FARM LOGIC =====  
+local ENABLED = false  
+local arrived = false  
+
+local function applyTargetHack(v, y) -- v = Bandit, y = LocalPlayer
+    if v:FindFirstChild("HumanoidRootPart") and y:FindFirstChild("HumanoidRootPart") then
+        -- ชุดคำสั่งที่คุณต้องการให้ใช้เป๊ะๆ:
+        v.HumanoidRootPart.CFrame = y.HumanoidRootPart.CFrame
+        v.HumanoidRootPart.Size = Vector3.new(60,60,60)
+        y.HumanoidRootPart.Size = Vector3.new(60,60,60)
+        v.HumanoidRootPart.Transparency = 1
+        v.HumanoidRootPart.CanCollide = false
+        y.HumanoidRootPart.CanCollide = false
+        v.Humanoid.WalkSpeed = 0
+        y.Humanoid.WalkSpeed = 0
+        v.Humanoid.JumpPower = 0
+        y.Humanoid.JumpPower = 0
     end
+end
+
+RunService.Heartbeat:Connect(function(dt)  
+    if not ENABLED then return end  
+    local ch, hum, hrp = getChar()  
+    if not (ch and hrp) then return end  
+
+    -- 1. บินไปจุดฟาร์ม
+    if not arrived then  
+        local dist = (HOLD_POS - hrp.Position).Magnitude  
+        if dist <= ARRIVE_DIST then  
+            arrived = true  
+        else  
+            hrp.CFrame = CFrame.new(hrp.Position + (HOLD_POS - hrp.Position).Unit * (FLY_SPEED * dt))  
+            hrp.AssemblyLinearVelocity = Vector3.zero  
+            return  
+        end  
+    end  
+
+    -- 2. เมื่อถึงจุดฟาร์ม
+    hrp.CFrame = CFrame.new(HOLD_POS)  
+    hrp.AssemblyLinearVelocity = Vector3.zero  
+    equipCombat()  
+    
+    local pg = LP:FindFirstChild("PlayerGui")  
+    if pg and pg:FindFirstChild("Main") and not pg.Main.Quest.Visible then startQuest() end  
+
+    -- 3. ตรวจสอบมอนสเตอร์และใช้คำสั่งที่คุณให้มา (จุดเดียว)
+    local enemies = workspace:FindFirstChild("Enemies")  
+    if enemies then  
+        for _, mob in ipairs(enemies:GetChildren()) do  
+            if mob.Name == "Bandit" and mob:FindFirstChild("Humanoid") and mob.Humanoid.Health > 0 then  
+                applyTargetHack(mob, ch)  
+            end  
+        end  
+    end  
+end)  
+
+-- ===== UI ROW =====  
+local row = Instance.new("Frame")  
+row.Name = "LF_Row1"  
+row.Parent = scroll  
+row.Size = UDim2.new(1,-6,0,46)  
+row.BackgroundColor3 = THEME.BLACK  
+corner(row,12) stroke(row,2.2,THEME.GREEN)  
+row.LayoutOrder = base + 2  
+
+local lab = Instance.new("TextLabel", row)  
+lab.BackgroundTransparency = 1 lab.Position = UDim2.new(0,16,0,0)  
+lab.Size = UDim2.new(1,-160,1,0) lab.Font = Enum.Font.GothamBold  
+lab.TextSize = 13 lab.TextColor3 = THEME.WHITE  
+lab.TextXAlignment = Enum.TextXAlignment.Left lab.Text = "Auto Level Farm (Hitbox 60)"  
+
+local sw = Instance.new("Frame", row)  
+sw.AnchorPoint = Vector2.new(1,0.5) sw.Position = UDim2.new(1,-12,0.5,0)  
+sw.Size = UDim2.fromOffset(52,26) sw.BackgroundColor3 = THEME.BLACK corner(sw,13)  
+local st = Instance.new("UIStroke", sw) st.Thickness = 1.8 st.Color = THEME.RED  
+
+local knob = Instance.new("Frame", sw)  
+knob.Size = UDim2.fromOffset(22,22) knob.Position = UDim2.new(0,2,0.5,-11)  
+knob.BackgroundColor3 = THEME.WHITE corner(knob,11)  
+
+local btn = Instance.new("TextButton", sw)  
+btn.Size = UDim2.fromScale(1,1) btn.BackgroundTransparency = 1 btn.Text = ""  
+
+btn.MouseButton1Click:Connect(function()  
+    ENABLED = not ENABLED  
+    arrived = false  
+    st.Color = ENABLED and THEME.GREEN or THEME.RED  
+    knob:TweenPosition(UDim2.new(ENABLED and 1 or 0, ENABLED and -24 or 2, 0.5, -11), "Out", "Quad", 0.08, true)  
+    if ENABLED then enableNoClip() else noclipOn = false if noclipConn then noclipConn:Disconnect() end end  
+end)  
 
-    local function stroke(ui,t,col)
-        local s = Instance.new("UIStroke")
-        s.Thickness = t or 2.2
-        s.Color = col or THEME.GREEN
-        s.Parent = ui
-    end
-
-    -- ===== CLEANUP =====
-    for _,n in ipairs({"LF_Header","LF_Row1"}) do
-        local o = scroll:FindFirstChild(n)
-        if o then o:Destroy() end
-    end
-
-    -- ===== ONE UIListLayout =====
-    local list = scroll:FindFirstChildOfClass("UIListLayout")
-    if not list then
-        list = Instance.new("UIListLayout", scroll)
-        list.Padding = UDim.new(0,12)
-        list.SortOrder = Enum.SortOrder.LayoutOrder
-    end
-    scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-
-    local base = 0
-    for _,c in ipairs(scroll:GetChildren()) do
-        if c:IsA("GuiObject") and c ~= list then
-            base = math.max(base, c.LayoutOrder or 0)
-        end
-    end
-
-    -- ===== HEADER =====
-    local header = Instance.new("TextLabel")
-    header.Name = "LF_Header"
-    header.Parent = scroll
-    header.Size = UDim2.new(1,0,0,36)
-    header.BackgroundTransparency = 1
-    header.Font = Enum.Font.GothamBold
-    header.TextSize = 16
-    header.TextColor3 = THEME.WHITE
-    header.TextXAlignment = Enum.TextXAlignment.Left
-    header.Text = "Level Farm ⚔️"
-    header.LayoutOrder = base + 1
-
-    -- ===== HELPERS =====
-    local function getChar()
-        local ch = LP.Character
-        if not ch then return end
-        local hum = ch:FindFirstChildOfClass("Humanoid")
-        local hrp = ch:FindFirstChild("HumanoidRootPart")
-        if hum and hrp and hum.Health > 0 then
-            return ch, hum, hrp
-        end
-    end
-
-    local function getBackpack()
-        return LP:FindFirstChildOfClass("Backpack")
-    end
-
-    -- ===== Combat =====
-    local function isCombatEquipped()
-        local ch = LP.Character
-        local bp = getBackpack()
-        if not ch or not bp then return false end
-        if ch:FindFirstChild("Combat") then return true end
-        if not bp:FindFirstChild("Combat") then return true end
-        return false
-    end
-
-    local function equipCombat()
-        local ch, hum = getChar()
-        local bp = getBackpack()
-        if not (ch and hum and bp) then return end
-        if isCombatEquipped() then return end
-        local tool = bp:FindFirstChild("Combat")
-        if tool and tool:IsA("Tool") then
-            pcall(function() hum:EquipTool(tool) end)
-        end
-    end
-
-    -- ===== QUEST =====
-    local function questVisible()
-        local pg = LP:FindFirstChild("PlayerGui")
-        local main = pg and pg:FindFirstChild("Main")
-        local quest = main and main:FindFirstChild("Quest")
-        if quest then return quest.Visible end
-        return false
-    end
-
-    local function startQuest()
-        local args = {"StartQuest","BanditQuest1",1}
-        pcall(function()
-            ReplicatedStorage:WaitForChild("Remotes")
-                :WaitForChild("CommF_")
-                :InvokeServer(unpack(args))
-        end)
-    end
-
-    -- ===== NoClip =====
-    local noclipOn = false
-    local noclipConn
-    local originalCollide = {}
-
-    local function applyNoClipOnce(ch)
-        for _,d in ipairs(ch:GetDescendants()) do
-            if d:IsA("BasePart") then
-                if originalCollide[d] == nil then
-                    originalCollide[d] = d.CanCollide
-                end
-                d.CanCollide = false
-            end
-        end
-    end
-
-    local function enableNoClip()
-        noclipOn = true
-        if noclipConn then noclipConn:Disconnect(); noclipConn=nil end
-        noclipConn = RunService.Stepped:Connect(function()
-            if not noclipOn then return end
-            local ch = LP.Character
-            if ch then applyNoClipOnce(ch) end
-        end)
-    end
-
-    local function disableNoClip()
-        noclipOn = false
-        if noclipConn then noclipConn:Disconnect(); noclipConn=nil end
-        for part, was in pairs(originalCollide) do
-            if part and part.Parent then part.CanCollide = was end
-        end
-        originalCollide = {}
-    end
-
-    -- ===== Player Fly/Hold =====
-    local ENABLED = false
-    local arrived = false
-    local holding = false
-    local holdConn, flyConn, brakeConn
-    local savedMove
-
-    local function hardStop(hrp)
-        if not hrp then return end
-        hrp.AssemblyLinearVelocity = Vector3.zero
-        hrp.AssemblyAngularVelocity = Vector3.zero
-    end
-
-    local function saveHumanoidOnce(hum)
-        if savedMove then return end
-        savedMove = {
-            ws = hum.WalkSpeed,
-            jp = hum.JumpPower,
-            jh = hum.JumpHeight,
-            ar = hum.AutoRotate,
-            ps = hum.PlatformStand,
-        }
-    end
-
-    local function restoreHumanoid(hum)
-        if savedMove then
-            hum.WalkSpeed = savedMove.ws or 16
-            pcall(function() hum.JumpPower = savedMove.jp or 50 end)
-            pcall(function() hum.JumpHeight = savedMove.jh or 7.2 end)
-            hum.AutoRotate = (savedMove.ar ~= false)
-            hum.PlatformStand = (savedMove.ps == true)
-            savedMove = nil
-        else
-            hum.PlatformStand = false
-            hum.AutoRotate = true
-        end
-        pcall(function()
-            hum:Move(Vector3.zero, false)
-            hum:ChangeState(Enum.HumanoidStateType.Running)
-        end)
-    end
-
-    local function setFlyControls(on)
-        local _, hum, hrp = getChar()
-        if not (hum and hrp) then return end
-
-        if on then
-            saveHumanoidOnce(hum)
-            hum.WalkSpeed = 0
-            pcall(function() hum.JumpPower = 0 end)
-            pcall(function() hum.JumpHeight = 0 end)
-            hum.AutoRotate = false
-            hum.PlatformStand = false
-            hardStop(hrp)
-        else
-            restoreHumanoid(hum)
-            hardStop(hrp)
-        end
-    end
-
-    local function startHold()
-        if holdConn then holdConn:Disconnect(); holdConn=nil end
-        holding = true
-        holdConn = RunService.Heartbeat:Connect(function()
-            if not (ENABLED and holding and arrived) then return end
-            local _,_,hrp = getChar()
-            if not hrp then return end
-            hrp.CFrame = CFrame.new(HOLD_POS)
-            hardStop(hrp)
-        end)
-    end
-
-    local function stopHold()
-        holding = false
-        if holdConn then holdConn:Disconnect(); holdConn=nil end
-    end
-
-    local function startFlyStraight()
-        if flyConn then flyConn:Disconnect(); flyConn=nil end
-        arrived = false
-        setFlyControls(true)
-
-        flyConn = RunService.Heartbeat:Connect(function(dt)
-            if not ENABLED or arrived then return end
-            local _,_,hrp = getChar()
-            if not hrp then return end
-
-            local cur = hrp.Position
-            local to = HOLD_POS - cur
-            local dist = to.Magnitude
-
-            if dist <= ARRIVE_DIST then
-                hrp.CFrame = CFrame.new(HOLD_POS)
-                hardStop(hrp)
-                arrived = true
-                setFlyControls(false)
-                startHold()
-                return
-            end
-
-            local step = math.min(dist, FLY_SPEED * dt)
-            local nextPos = cur + (to / dist) * step
-
-            hrp.CFrame = CFrame.new(nextPos)
-            hardStop(hrp)
-        end)
-    end
-
-    local function startBrake()
-        if brakeConn then brakeConn:Disconnect(); brakeConn=nil end
-        local tEnd = os.clock() + 0.45
-        brakeConn = RunService.Heartbeat:Connect(function()
-            local _, hum, hrp = getChar()
-            if hrp then hardStop(hrp) end
-            if hum then
-                hum.PlatformStand = false
-                hum.AutoRotate = true
-                pcall(function()
-                    hum:Move(Vector3.zero, false)
-                    hum:ChangeState(Enum.HumanoidStateType.Running)
-                end)
-            end
-            if os.clock() >= tEnd then
-                if brakeConn then brakeConn:Disconnect(); brakeConn=nil end
-            end
-        end)
-    end
-
-    -- ===== Pull Bandits (SNAP TO GROUND via BoundingBox) =====
-    local pulledOnce = false
-    local pullingNow = false
-
-    local function getEnemiesFolder()
-        return workspace:FindFirstChild("Enemies")
-    end
-
-    local function getMobRoot(m)
-        return m:FindFirstChild("HumanoidRootPart") or m:FindFirstChild("HRP") or m:FindFirstChild("RootPart")
-    end
-
-    local function snapshotCollide(model)
-        local snap = {}
-        for _,d in ipairs(model:GetDescendants()) do
-            if d:IsA("BasePart") then snap[d] = d.CanCollide end
-        end
-        return snap
-    end
-
-    local function setModelNoCollide(model)
-        for _,d in ipairs(model:GetDescendants()) do
-            if d:IsA("BasePart") then d.CanCollide = false end
-        end
-    end
-
-    local function restoreCollide(snap)
-        for part, was in pairs(snap) do
-            if part and part.Parent then part.CanCollide = was end
-        end
-    end
-
-    -- ✅ FIX: Raycast หา “พื้นจริง” โดย ignore Enemies ทั้งโฟลเดอร์ (กัน groundY ลอยสูงขึ้นสะสม)
-    local function rayGroundHit(xzPos, blacklist)
-        local origin = xzPos + Vector3.new(0, 800, 0)
-        local dir = Vector3.new(0, -2600, 0)
-
-        local params = RaycastParams.new()
-        params.FilterType = Enum.RaycastFilterType.Blacklist
-
-        local bl = {}
-        if blacklist then
-            for _,v in ipairs(blacklist) do bl[#bl+1] = v end
-        end
-
-        local enemies = workspace:FindFirstChild("Enemies")
-        if enemies then bl[#bl+1] = enemies end
-
-        params.FilterDescendantsInstances = bl
-        params.IgnoreWater = false
-
-        return workspace:Raycast(origin, dir, params)
-    end
-
-    local function collectBandits()
-        local enemies = getEnemiesFolder()
-        if not enemies then return {} end
-        local out = {}
-        for _,mob in ipairs(enemies:GetChildren()) do
-            if mob:IsA("Model") and mob.Name == "Bandit" then
-                local root = getMobRoot(mob)
-                local hum = mob:FindFirstChildOfClass("Humanoid")
-                if root and hum and hum.Health > 0 then
-                    out[#out+1] = mob
-                end
-            end
-        end
-        return out
-    end
-
-    local function clusterOffset(i)
-        local ang = i * CLUSTER_STEP
-        local r = CLUSTER_RADIUS * math.min(1, math.sqrt(i / math.max(1,i)))
-        return Vector3.new(math.cos(ang) * r, 0, math.sin(ang) * r)
-    end
-
-    local function snapTargetYForModel(mob, groundY)
-        -- ✅ ใช้ความสูงจริงของโมเดล: bottom(bbox) แตะพื้นพอดี
-        local _, size = mob:GetBoundingBox()
-        local halfY = (size and size.Y and (size.Y * 0.5)) or 3
-        return groundY + halfY
-    end
-
-    local function pullBanditsOnce()
-        if pulledOnce or pullingNow then return end
-        local listBandit = collectBandits()
-        if #listBandit == 0 then return end
-
-        pullingNow = true
-
-        local hit = rayGroundHit(Vector3.new(HOLD_POS.X, HOLD_POS.Y, HOLD_POS.Z), { LP.Character })
-        local groundY = (hit and hit.Position.Y) or HOLD_POS.Y
-
-        local startPos, targetPos, collideSnaps = {}, {}, {}
-
-        for idx, mob in ipairs(listBandit) do
-            local root = getMobRoot(mob)
-            if root then
-                collideSnaps[mob] = snapshotCollide(mob)
-                setModelNoCollide(mob)
-
-                startPos[mob] = root.Position
-
-                local off = clusterOffset(idx)
-                local ty = snapTargetYForModel(mob, groundY)
-                targetPos[mob] = Vector3.new(HOLD_POS.X, ty, HOLD_POS.Z) + off
-
-                if ZERO_VEL then
-                    root.AssemblyLinearVelocity = Vector3.zero
-                    root.AssemblyAngularVelocity = Vector3.zero
-                end
-            end
-        end
-
-        task.spawn(function()
-            local t0 = os.clock()
-            while true do
-                local a = math.clamp((os.clock() - t0) / PULL_TIME, 0, 1)
-
-                for _, mob in ipairs(listBandit) do
-                    local root = getMobRoot(mob)
-                    local hum = mob:FindFirstChildOfClass("Humanoid")
-                    local sp = startPos[mob]
-                    local tp = targetPos[mob]
-                    if root and hum and hum.Health > 0 and sp and tp then
-                        local pos = sp:Lerp(tp, a)
-                        pcall(function()
-                            if ZERO_VEL then
-                                root.AssemblyLinearVelocity = Vector3.zero
-                                root.AssemblyAngularVelocity = Vector3.zero
-                            end
-                            mob:PivotTo(CFrame.new(pos))
-                        end)
-                    end
-                end
-
-                if a >= 1 then break end
-                RunService.Heartbeat:Wait()
-            end
-
-            -- ✅ ปล่อยทันที (ไม่ค้าง)
-            for _, mob in ipairs(listBandit) do
-                local snap = collideSnaps[mob]
-                if snap then restoreCollide(snap) end
-            end
-
-            pulledOnce = true
-            pullingNow = false
-        end)
-    end
-
-    -- ===== AUTO LOOP =====
-    local conn
-    local last = 0
-    local INTERVAL = 0.35
-
-    local function tick()
-        if not ENABLED then return end
-
-        local now = os.clock()
-        if now - last < INTERVAL then return end
-        last = now
-
-        equipCombat()
-        if not questVisible() then startQuest() end
-
-        if arrived then
-            pullBanditsOnce()
-        end
-    end
-
-    local function setEnabled(v)
-        ENABLED = v and true or false
-        if conn then conn:Disconnect(); conn=nil end
-        if flyConn then flyConn:Disconnect(); flyConn=nil end
-        stopHold()
-
-        pulledOnce = false
-        pullingNow = false
-        arrived = false
-
-        if ENABLED then
-            last = 0
-            enableNoClip()
-            startFlyStraight()
-            conn = RunService.Heartbeat:Connect(tick)
-        else
-            disableNoClip()
-            setFlyControls(false)
-            startBrake()
-        end
-    end
-
-    LP.CharacterAdded:Connect(function()
-        if ENABLED then
-            task.wait(0.25)
-            disableNoClip()
-            enableNoClip()
-
-            if flyConn then flyConn:Disconnect(); flyConn=nil end
-            stopHold()
-
-            pulledOnce = false
-            pullingNow = false
-            arrived = false
-
-            startFlyStraight()
-        end
-    end)
-
-    -- ===== ROW 1 =====
-    local row = Instance.new("Frame")
-    row.Name = "LF_Row1"
-    row.Parent = scroll
-    row.Size = UDim2.new(1,-6,0,46)
-    row.BackgroundColor3 = THEME.BLACK
-    corner(row,12)
-    stroke(row,2.2,THEME.GREEN)
-    row.LayoutOrder = base + 2
-
-    local lab = Instance.new("TextLabel", row)
-    lab.BackgroundTransparency = 1
-    lab.Position = UDim2.new(0,16,0,0)
-    lab.Size = UDim2.new(1,-160,1,0)
-    lab.Font = Enum.Font.GothamBold
-    lab.TextSize = 13
-    lab.TextColor3 = THEME.WHITE
-    lab.TextXAlignment = Enum.TextXAlignment.Left
-    lab.Text = "Auto Level Farm"
-
-    local sw = Instance.new("Frame", row)
-    sw.AnchorPoint = Vector2.new(1,0.5)
-    sw.Position = UDim2.new(1,-12,0.5,0)
-    sw.Size = UDim2.fromOffset(52,26)
-    sw.BackgroundColor3 = THEME.BLACK
-    corner(sw,13)
-
-    local st = Instance.new("UIStroke", sw)
-    st.Thickness = 1.8
-
-    local knob = Instance.new("Frame", sw)
-    knob.Size = UDim2.fromOffset(22,22)
-    knob.Position = UDim2.new(0,2,0.5,-11)
-    knob.BackgroundColor3 = THEME.WHITE
-    corner(knob,11)
-
-    local function update(on)
-        st.Color = on and THEME.GREEN or THEME.RED
-        knob:TweenPosition(
-            UDim2.new(on and 1 or 0, on and -24 or 2, 0.5, -11),
-            Enum.EasingDirection.Out,
-            Enum.EasingStyle.Quad,
-            0.08,
-            true
-        )
-    end
-
-    local btn = Instance.new("TextButton", sw)
-    btn.Size = UDim2.fromScale(1,1)
-    btn.BackgroundTransparency = 1
-    btn.Text = ""
-    btn.AutoButtonColor = false
-
-    btn.MouseButton1Click:Connect(function()
-        setEnabled(not ENABLED)
-        update(ENABLED)
-    end)
-
-    update(false)
 end)
+
 --===== UFO HUB X • SETTINGS — Smoother 🚀 (A V1 • fixed 3 rows) + Runner Save (per-map) + AA1 =====
 registerRight("Settings", function(scroll)
     local TweenService = game:GetService("TweenService")
