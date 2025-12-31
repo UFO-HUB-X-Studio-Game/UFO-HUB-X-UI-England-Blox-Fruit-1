@@ -691,444 +691,18 @@ end)
 
 registerRight("Home", function(scroll) end)
 registerRight("Settings", function(scroll) end)
---===== UFO HUB X • Home – Model A V1 + AA1 (Auto Farm 🌾) =====
--- Header : "Auto Farm 🌾"
--- Row 1  : "Auto Woodcutting"
--- Row 2  : "Auto Watering"
--- Row 3  : "Auto Watering Can Collect"  (รวม Auto Water Trees ในสวิตช์เดียวกัน)
---
--- UPDATED:
--- - Row1: swing 50 times -> cooldown 2 sec -> repeat
--- - If Row1 ON and Row3 ON: Row3 runs ONLY during Row1 cooldown 2 sec.
--- - If Row1 OFF and Row3 ON: Row3 runs normally (every 5s).
--- - Row3 cycle: ClickWateringCan -> TreeClick (Normal.Tree) burst -> wait 5s -> repeat
+--===== UFO HUB X • Home – Level Farm (Equip Combat First) (Model A V1) =====
+-- Header : "Level Farm ⚔️"
+-- Row 1  : "Auto Level Farm"
+-- Logic  : Combat in Backpack = NOT equipped
+--          Combat missing from Backpack = equipped (usually in Character)
 
-----------------------------------------------------------------------
--- 0) SHARED COORDINATOR (Auto Farm 🌾)
-----------------------------------------------------------------------
-do
-    _G.UFOX_AUTOFARM = _G.UFOX_AUTOFARM or {}
-    local C = _G.UFOX_AUTOFARM
-
-    C.woodEnabled = C.woodEnabled or false
-    C.cooldownUntil = C.cooldownUntil or 0
-
-    function C:isCooldown()
-        return os.clock() < (tonumber(self.cooldownUntil) or 0)
-    end
-
-    function C:setCooldown(sec)
-        sec = tonumber(sec) or 2
-        if sec < 0 then sec = 0 end
-        self.cooldownUntil = os.clock() + sec
-    end
-
-    function C:clearCooldown()
-        self.cooldownUntil = 0
-    end
-
-    function C:allowRow3(row3Enabled)
-        if not row3Enabled then return false end
-        if not self.woodEnabled then
-            return true -- ✅ Row1 OFF -> Row3 ทำงานได้ปกติ
-        end
-        return self:isCooldown() -- ✅ Row1 ON -> Row3 ทำงานเฉพาะช่วง cooldown
-    end
-
-    -- ✅ TreeClick burst (Normal.Tree) 100%
-    function C:fireWaterTreesBurst(burstCount, gap)
-        local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
-        local args = {
-            workspace:WaitForChild("Mutations"):WaitForChild("Normal"):WaitForChild("Tree")
-        }
-        local remote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("TreeClick")
-
-        local n = tonumber(burstCount) or 6
-        if n < 1 then n = 1 end
-
-        local g = tonumber(gap) or 0.08
-        if g < 0.03 then g = 0.03 end
-
-        for i = 1, n do
-            pcall(function()
-                remote:InvokeServer(unpack(args))
-            end)
-            task.wait(g)
-        end
-    end
-end
-
-----------------------------------------------------------------------
--- 1) AA1 RUNNER (GLOBAL) - Row1: Auto Woodcutting (XZ warp only) + 50 hits -> cooldown 2s
-----------------------------------------------------------------------
-do
+registerRight("Home", function(scroll)
     local Players = game:GetService("Players")
-    local Workspace = game:GetService("Workspace")
-    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local RunService = game:GetService("RunService")
     local LP = Players.LocalPlayer
 
-    local SAVE = (getgenv and getgenv().UFOX_SAVE) or { get=function(_,_,d) return d end, set=function() end }
-
-    local SYSTEM_NAME = "AutoFarm_Woodcutting"
-    local GAME_ID  = tonumber(game.GameId)  or 0
-    local PLACE_ID = tonumber(game.PlaceId) or 0
-    local BASE_SCOPE = ("AA1/%s/%d/%d"):format(SYSTEM_NAME, GAME_ID, PLACE_ID)
-    local function K(field) return BASE_SCOPE .. "/" .. field end
-    local function SaveGet(field, default)
-        local ok, v = pcall(function() return SAVE.get(K(field), default) end)
-        return ok and v or default
-    end
-    local function SaveSet(field, value) pcall(function() SAVE.set(K(field), value) end) end
-
-    local STATE = {
-        Enabled     = SaveGet("Enabled", false),
-
-        Range       = SaveGet("Range", 6),      -- XZ only
-        StepSec     = SaveGet("StepSec", 0.20),
-        YOffset     = SaveGet("YOffset", 3),
-        AxeName     = SaveGet("AxeName", "Axe"),
-        SwingSec    = SaveGet("SwingSec", 0.12),
-        WarpCD      = SaveGet("WarpCD", 0.25),
-
-        HitBurst    = SaveGet("HitBurst", 50),  -- ✅ 50 hits
-        CooldownSec = SaveGet("CooldownSec", 2.0) -- ✅ 2 วิ
-    }
-
-    local function getChar() return LP.Character end
-    local function getHumanoid()
-        local ch = getChar()
-        return ch and ch:FindFirstChildOfClass("Humanoid") or nil
-    end
-    local function getHRP()
-        local ch = getChar()
-        return ch and ch:FindFirstChild("HumanoidRootPart") or nil
-    end
-
-    local function distXZ(a, b)
-        local dx = a.X - b.X
-        local dz = a.Z - b.Z
-        return math.sqrt(dx*dx + dz*dz)
-    end
-
-    local function findNearestTreeHitBox()
-        local hrp = getHRP()
-        if not hrp then return nil end
-        local best, bestDist = nil, math.huge
-        local p = hrp.Position
-        for _, d in ipairs(Workspace:GetDescendants()) do
-            if d:IsA("Model") and d.Name == "Tree" then
-                local hb = d:FindFirstChild("HitBox")
-                if hb and hb:IsA("BasePart") then
-                    local dist = distXZ(hb.Position, p)
-                    if dist < bestDist then
-                        bestDist = dist
-                        best = hb
-                    end
-                end
-            end
-        end
-        return best
-    end
-
-    local lastWarp = 0
-    local function goToHitBox(hitbox)
-        local hrp = getHRP()
-        local hum = getHumanoid()
-        if not (hrp and hum and hitbox) then return false end
-
-        local range = tonumber(STATE.Range) or 6
-        if range < 2 then range = 2 end
-
-        local dXZ = distXZ(hrp.Position, hitbox.Position)
-        if dXZ <= range then
-            return true
-        end
-
-        local now = os.clock()
-        local cd = tonumber(STATE.WarpCD) or 0.25
-        if cd < 0.05 then cd = 0.05 end
-        if (now - lastWarp) < cd then return false end
-        lastWarp = now
-
-        local targetPos = hitbox.Position + Vector3.new(0, tonumber(STATE.YOffset) or 3, 0)
-        pcall(function() hum:MoveTo(hitbox.Position) end)
-        task.wait(0.05)
-        pcall(function() hrp.CFrame = CFrame.new(targetPos) end)
-        return false
-    end
-
-    local function isAxeEquipped()
-        local ch = getChar()
-        if not ch then return false end
-        local axeName = tostring(STATE.AxeName or "Axe")
-        local t = ch:FindFirstChild(axeName)
-        return (t and t:IsA("Tool")) and true or false
-    end
-
-    local function findAxeInBackpack()
-        local bp = LP:FindFirstChildOfClass("Backpack") or LP:FindFirstChild("Backpack")
-        if not bp then return nil end
-        local axeName = tostring(STATE.AxeName or "Axe")
-        local t = bp:FindFirstChild(axeName)
-        return (t and t:IsA("Tool")) and t or nil
-    end
-
-    local function ensureEquipAxe()
-        if isAxeEquipped() then return true end
-        local hum = getHumanoid()
-        if not hum then return false end
-        local axeTool = findAxeInBackpack()
-        if axeTool then
-            pcall(function() hum:EquipTool(axeTool) end)
-            task.wait(0.08)
-        end
-        return isAxeEquipped()
-    end
-
-    local cachedSwingRemote
-    local function getSwingRemote()
-        if cachedSwingRemote and cachedSwingRemote.Parent then return cachedSwingRemote end
-        local remotes = ReplicatedStorage:WaitForChild("Remotes", 5)
-        if not remotes then return nil end
-        cachedSwingRemote = remotes:WaitForChild("AxeSwing", 5)
-        return cachedSwingRemote
-    end
-
-    local lastSwing = 0
-    local function trySwing()
-        local r = getSwingRemote()
-        if not r then return false end
-
-        local cd = tonumber(STATE.SwingSec) or 0.12
-        if cd < 0.03 then cd = 0.03 end
-
-        local now = os.clock()
-        if (now - lastSwing) < cd then return false end
-        lastSwing = now
-
-        local ok = pcall(function() r:FireServer() end)
-        return ok
-    end
-
-    local loopToken, running = 0, false
-    local hitCount = 0
-
-    local function applyFromState()
-        if not STATE.Enabled or running then return end
-        running = true
-        loopToken += 1
-        local myToken = loopToken
-
-        local C = _G.UFOX_AUTOFARM
-        task.spawn(function()
-            while STATE.Enabled and loopToken == myToken do
-                if C then C.woodEnabled = true end
-
-                if C and C:isCooldown() then
-                    task.wait(0.05)
-                    continue
-                end
-
-                local hitbox = findNearestTreeHitBox()
-                local atTree = false
-                if hitbox then
-                    atTree = goToHitBox(hitbox)
-                end
-
-                local hasAxe = ensureEquipAxe()
-
-                if atTree and hasAxe then
-                    if trySwing() then
-                        hitCount += 1
-                        local burst = tonumber(STATE.HitBurst) or 50
-                        if burst < 1 then burst = 1 end
-
-                        if hitCount >= burst then
-                            hitCount = 0
-                            local cdSec = tonumber(STATE.CooldownSec) or 2
-                            if cdSec < 0.1 then cdSec = 0.1 end
-                            if C then C:setCooldown(cdSec) end
-                        end
-                    end
-                end
-
-                local step = tonumber(STATE.StepSec) or 0.20
-                if step < 0.05 then step = 0.05 end
-                task.wait(step)
-            end
-
-            if _G.UFOX_AUTOFARM then
-                _G.UFOX_AUTOFARM.woodEnabled = false
-                _G.UFOX_AUTOFARM:clearCooldown()
-            end
-            running = false
-        end)
-    end
-
-    local function SetEnabled(v)
-        v = v and true or false
-        STATE.Enabled = v
-        SaveSet("Enabled", v)
-        if _G.UFOX_AUTOFARM then
-            _G.UFOX_AUTOFARM.woodEnabled = v
-            if not v then _G.UFOX_AUTOFARM:clearCooldown() end
-        end
-        if v then
-            task.defer(applyFromState)
-        else
-            loopToken += 1
-            running = false
-            hitCount = 0
-        end
-    end
-
-    _G.UFOX_AA1 = _G.UFOX_AA1 or {}
-    _G.UFOX_AA1[SYSTEM_NAME] = {
-        state=STATE, setEnabled=SetEnabled,
-        getEnabled=function() return STATE.Enabled==true end,
-        ensureRunner=function() task.defer(applyFromState) end
-    }
-
-    task.defer(applyFromState)
-end
-
-----------------------------------------------------------------------
--- 2) AA1 RUNNER (GLOBAL) - Row2: Auto Watering (TapButtonClick)
-----------------------------------------------------------------------
-do
-    local ReplicatedStorage = game:GetService("ReplicatedStorage")
-    local SAVE = (getgenv and getgenv().UFOX_SAVE) or { get=function(_,_,d) return d end, set=function() end }
-
-    local SYSTEM_NAME = "AutoFarm_Watering"
-    local GAME_ID  = tonumber(game.GameId)  or 0
-    local PLACE_ID = tonumber(game.PlaceId) or 0
-    local BASE_SCOPE = ("AA1/%s/%d/%d"):format(SYSTEM_NAME, GAME_ID, PLACE_ID)
-    local function K(f) return BASE_SCOPE.."/"..f end
-    local function SaveGet(f,d) local ok,v=pcall(function() return SAVE.get(K(f),d) end); return ok and v or d end
-    local function SaveSet(f,v) pcall(function() SAVE.set(K(f),v) end) end
-
-    local STATE = { Enabled=SaveGet("Enabled", false), LoopWait=SaveGet("LoopWait", 1.0) }
-    local loopToken, running = 0, false
-
-    local function fireTapButton()
-        local args = { workspace:WaitForChild("Plots"):WaitForChild("Plot") }
-        ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("TapButtonClick"):FireServer(unpack(args))
-    end
-
-    local function applyFromState()
-        if not STATE.Enabled or running then return end
-        running = true
-        loopToken += 1
-        local myToken = loopToken
-        task.spawn(function()
-            while STATE.Enabled and loopToken == myToken do
-                pcall(fireTapButton)
-                task.wait(tonumber(STATE.LoopWait) or 1)
-            end
-            running = false
-        end)
-    end
-
-    local function SetEnabled(v)
-        STATE.Enabled = v and true or false
-        SaveSet("Enabled", STATE.Enabled)
-        if STATE.Enabled then task.defer(applyFromState) else loopToken += 1; running = false end
-    end
-
-    _G.UFOX_AA1 = _G.UFOX_AA1 or {}
-    _G.UFOX_AA1[SYSTEM_NAME] = { state=STATE, setEnabled=SetEnabled, getEnabled=function() return STATE.Enabled==true end, ensureRunner=function() task.defer(applyFromState) end }
-    task.defer(applyFromState)
-end
-
-----------------------------------------------------------------------
--- 3) AA1 RUNNER (GLOBAL) - Row3: Auto Watering Can Collect (5s relay) + TreeClick (Normal.Tree)
---    - If Row1 ON: Row3 runs only during cooldown 2s.
---    - If Row1 OFF: Row3 runs normally.
-----------------------------------------------------------------------
-do
-    local ReplicatedStorage = game:GetService("ReplicatedStorage")
-    local SAVE = (getgenv and getgenv().UFOX_SAVE) or { get=function(_,_,d) return d end, set=function() end }
-
-    local SYSTEM_NAME = "AutoFarm_WateringCanCollect_AND_WaterTrees"
-    local GAME_ID  = tonumber(game.GameId)  or 0
-    local PLACE_ID = tonumber(game.PlaceId) or 0
-    local BASE_SCOPE = ("AA1/%s/%d/%d"):format(SYSTEM_NAME, GAME_ID, PLACE_ID)
-    local function K(f) return BASE_SCOPE.."/"..f end
-    local function SaveGet(f,d) local ok,v=pcall(function() return SAVE.get(K(f),d) end); return ok and v or d end
-    local function SaveSet(f,v) pcall(function() SAVE.set(K(f),v) end) end
-
-    local STATE = {
-        Enabled      = SaveGet("Enabled", false),
-        LoopWait     = SaveGet("LoopWait", 5.0), -- 5s relay (รอบการเก็บ + รด)
-        BurstAfter   = SaveGet("BurstAfter", 10),
-        BurstGap     = SaveGet("BurstGap", 0.08),
-        WaitBlocked  = SaveGet("WaitBlocked", 0.10),
-    }
-
-    local loopToken, running = 0, false
-
-    local function fireWateringCan()
-        local args = { workspace:WaitForChild("Mutations"):WaitForChild("Normal"):WaitForChild("WateringCan") }
-        ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ClickWateringCan"):FireServer(unpack(args))
-    end
-
-    local function applyFromState()
-        if not STATE.Enabled or running then return end
-        running = true
-        loopToken += 1
-        local myToken = loopToken
-
-        task.spawn(function()
-            while STATE.Enabled and loopToken == myToken do
-                local C = _G.UFOX_AUTOFARM
-                if C and (not C:allowRow3(true)) then
-                    task.wait(tonumber(STATE.WaitBlocked) or 0.10)
-                    continue
-                end
-
-                -- 1) Collect can first
-                pcall(fireWateringCan)
-
-                -- 2) Then water trees burst (✅ ใช้ Normal.Tree 100%)
-                if C and C.fireWaterTreesBurst then
-                    C:fireWaterTreesBurst(STATE.BurstAfter, STATE.BurstGap)
-                end
-
-                local w = tonumber(STATE.LoopWait) or 5
-                if w < 0.2 then w = 0.2 end
-                task.wait(w)
-            end
-            running = false
-        end)
-    end
-
-    local function SetEnabled(v)
-        STATE.Enabled = v and true or false
-        SaveSet("Enabled", STATE.Enabled)
-        if STATE.Enabled then task.defer(applyFromState) else loopToken += 1; running = false end
-    end
-
-    _G.UFOX_AA1 = _G.UFOX_AA1 or {}
-    _G.UFOX_AA1[SYSTEM_NAME] = {
-        state=STATE, setEnabled=SetEnabled,
-        getEnabled=function() return STATE.Enabled==true end,
-        ensureRunner=function() task.defer(applyFromState) end
-    }
-
-    task.defer(applyFromState)
-end
-
-----------------------------------------------------------------------
--- 4) UI PART: Model A V1 (Home) - Auto Farm 🌾 (3 Rows)
-----------------------------------------------------------------------
-registerRight("Home", function(scroll)
-    local TweenService = game:GetService("TweenService")
-
-    local AA1_WOOD = _G.UFOX_AA1 and _G.UFOX_AA1["AutoFarm_Woodcutting"]
-    local AA1_WAT1 = _G.UFOX_AA1 and _G.UFOX_AA1["AutoFarm_Watering"]
-    local AA1_WAT3 = _G.UFOX_AA1 and _G.UFOX_AA1["AutoFarm_WateringCanCollect_AND_WaterTrees"]
-
+    -- ===== THEME (A V1) =====
     local THEME = {
         GREEN = Color3.fromRGB(25,255,125),
         RED   = Color3.fromRGB(255,40,40),
@@ -1136,15 +710,26 @@ registerRight("Home", function(scroll)
         BLACK = Color3.fromRGB(0,0,0),
     }
 
-    local function corner(ui,r) local c=Instance.new("UICorner"); c.CornerRadius=UDim.new(0,r or 12); c.Parent=ui end
-    local function stroke(ui,t,col) local s=Instance.new("UIStroke"); s.Thickness=t or 2.2; s.Color=col or THEME.GREEN; s.Parent=ui end
-    local function tween(o,p,d) TweenService:Create(o,TweenInfo.new(d or 0.08,Enum.EasingStyle.Quad),p):Play() end
+    local function corner(ui,r)
+        local c = Instance.new("UICorner")
+        c.CornerRadius = UDim.new(0, r or 12)
+        c.Parent = ui
+    end
 
-    for _,n in ipairs({"AF_Header","AF_Row1","AF_Row2","AF_Row3"}) do
+    local function stroke(ui,t,col)
+        local s = Instance.new("UIStroke")
+        s.Thickness = t or 2.2
+        s.Color = col or THEME.GREEN
+        s.Parent = ui
+    end
+
+    -- ===== CLEANUP (เฉพาะของเรา) =====
+    for _,n in ipairs({"LF_Header","LF_Row1"}) do
         local o = scroll:FindFirstChild(n)
         if o then o:Destroy() end
     end
 
+    -- ===== ONE UIListLayout =====
     local list = scroll:FindFirstChildOfClass("UIListLayout")
     if not list then
         list = Instance.new("UIListLayout", scroll)
@@ -1153,6 +738,7 @@ registerRight("Home", function(scroll)
     end
     scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 
+    -- ===== dynamic base LayoutOrder =====
     local base = 0
     for _,c in ipairs(scroll:GetChildren()) do
         if c:IsA("GuiObject") and c ~= list then
@@ -1160,8 +746,9 @@ registerRight("Home", function(scroll)
         end
     end
 
+    -- ===== HEADER =====
     local header = Instance.new("TextLabel")
-    header.Name = "AF_Header"
+    header.Name = "LF_Header"
     header.Parent = scroll
     header.Size = UDim2.new(1,0,0,36)
     header.BackgroundTransparency = 1
@@ -1169,90 +756,137 @@ registerRight("Home", function(scroll)
     header.TextSize = 16
     header.TextColor3 = THEME.WHITE
     header.TextXAlignment = Enum.TextXAlignment.Left
-    header.Text = "》》》Auto Farm ⚙️《《《"
+    header.Text = "Level Farm ⚔️"
     header.LayoutOrder = base + 1
 
-    local function makeRowSwitch(rowName, order, labelText, aa1Ref, onToggle)
-        local row = Instance.new("Frame")
-        row.Name = rowName
-        row.Parent = scroll
-        row.Size = UDim2.new(1,-6,0,46)
-        row.BackgroundColor3 = THEME.BLACK
-        corner(row,12)
-        stroke(row,2.2,THEME.GREEN)
-        row.LayoutOrder = order
-
-        local lab = Instance.new("TextLabel", row)
-        lab.BackgroundTransparency = 1
-        lab.Position = UDim2.new(0,16,0,0)
-        lab.Size = UDim2.new(1,-160,1,0)
-        lab.Font = Enum.Font.GothamBold
-        lab.TextSize = 13
-        lab.TextColor3 = THEME.WHITE
-        lab.TextXAlignment = Enum.TextXAlignment.Left
-        lab.Text = labelText
-
-        local sw = Instance.new("Frame", row)
-        sw.AnchorPoint = Vector2.new(1,0.5)
-        sw.Position = UDim2.new(1,-12,0.5,0)
-        sw.Size = UDim2.fromOffset(52,26)
-        sw.BackgroundColor3 = THEME.BLACK
-        corner(sw,13)
-
-        local st = Instance.new("UIStroke", sw)
-        st.Thickness = 1.8
-
-        local knob = Instance.new("Frame", sw)
-        knob.Size = UDim2.fromOffset(22,22)
-        knob.Position = UDim2.new(0,2,0.5,-11)
-        knob.BackgroundColor3 = THEME.WHITE
-        corner(knob,11)
-
-        local function update(on)
-            st.Color = on and THEME.GREEN or THEME.RED
-            tween(knob,{ Position = UDim2.new(on and 1 or 0,on and -24 or 2,0.5,-11) })
-        end
-
-        local btn = Instance.new("TextButton", sw)
-        btn.Size = UDim2.fromScale(1,1)
-        btn.BackgroundTransparency = 1
-        btn.Text = ""
-        btn.AutoButtonColor = false
-
-        btn.MouseButton1Click:Connect(function()
-            local cur = (aa1Ref and aa1Ref.getEnabled and aa1Ref.getEnabled()) or false
-            local v = not cur
-            if aa1Ref and aa1Ref.setEnabled then
-                aa1Ref.setEnabled(v)
-                if onToggle then pcall(onToggle, v) end
-                if v and aa1Ref.ensureRunner then aa1Ref.ensureRunner() end
-            end
-            update(v)
-        end)
-
-        update((aa1Ref and aa1Ref.getEnabled and aa1Ref.getEnabled()) or false)
-        return update
+    -- ===== HELPERS =====
+    local function getChar()
+        local ch = LP.Character
+        if not ch then return nil end
+        local hum = ch:FindFirstChildOfClass("Humanoid")
+        if not hum or hum.Health <= 0 then return nil end
+        return ch, hum
     end
 
-    local set1 = makeRowSwitch("AF_Row1", base + 2, "Auto Woodcutting", AA1_WOOD, function(v)
-        if _G.UFOX_AUTOFARM then
-            _G.UFOX_AUTOFARM.woodEnabled = v
-            if not v then _G.UFOX_AUTOFARM:clearCooldown() end
+    local function getBackpack()
+        return LP:FindFirstChildOfClass("Backpack")
+    end
+
+    -- Combat in Backpack = NOT equipped
+    -- Combat missing from Backpack = equipped
+    local function isCombatEquipped()
+        local ch = LP.Character
+        local bp = getBackpack()
+        if not ch or not bp then return false end
+
+        if ch:FindFirstChild("Combat") then
+            return true
         end
+
+        if not bp:FindFirstChild("Combat") then
+            return true
+        end
+
+        return false
+    end
+
+    local function equipCombat()
+        local ch, hum = getChar()
+        local bp = getBackpack()
+        if not (ch and hum and bp) then return end
+        if isCombatEquipped() then return end
+
+        local tool = bp:FindFirstChild("Combat")
+        if tool and tool:IsA("Tool") then
+            pcall(function()
+                hum:EquipTool(tool)
+            end)
+        end
+    end
+
+    -- ===== AUTO LOOP =====
+    local ENABLED = false
+    local conn
+    local last = 0
+    local INTERVAL = 0.25
+
+    local function tick()
+        if not ENABLED then return end
+        local now = os.clock()
+        if now - last < INTERVAL then return end
+        last = now
+        equipCombat()
+    end
+
+    local function setEnabled(v)
+        ENABLED = v and true or false
+        if conn then conn:Disconnect(); conn = nil end
+        if ENABLED then
+            last = 0
+            conn = RunService.Heartbeat:Connect(tick)
+        end
+    end
+
+    -- ===== ROW 1 SWITCH (A V1) =====
+    local row = Instance.new("Frame")
+    row.Name = "LF_Row1"
+    row.Parent = scroll
+    row.Size = UDim2.new(1,-6,0,46)
+    row.BackgroundColor3 = THEME.BLACK
+    corner(row,12)
+    stroke(row,2.2,THEME.GREEN)
+    row.LayoutOrder = base + 2
+
+    local lab = Instance.new("TextLabel", row)
+    lab.BackgroundTransparency = 1
+    lab.Position = UDim2.new(0,16,0,0)
+    lab.Size = UDim2.new(1,-160,1,0)
+    lab.Font = Enum.Font.GothamBold
+    lab.TextSize = 13
+    lab.TextColor3 = THEME.WHITE
+    lab.TextXAlignment = Enum.TextXAlignment.Left
+    lab.Text = "Auto Level Farm" -- ✅ เปลี่ยนชื่อรายการที่ 1 เป็นอังกฤษ ไม่มีอิโมจิ
+
+    -- switch
+    local sw = Instance.new("Frame", row)
+    sw.AnchorPoint = Vector2.new(1,0.5)
+    sw.Position = UDim2.new(1,-12,0.5,0)
+    sw.Size = UDim2.fromOffset(52,26)
+    sw.BackgroundColor3 = THEME.BLACK
+    corner(sw,13)
+
+    local st = Instance.new("UIStroke", sw)
+    st.Thickness = 1.8
+
+    local knob = Instance.new("Frame", sw)
+    knob.Size = UDim2.fromOffset(22,22)
+    knob.Position = UDim2.new(0,2,0.5,-11)
+    knob.BackgroundColor3 = THEME.WHITE
+    corner(knob,11)
+
+    local function update(on)
+        st.Color = on and THEME.GREEN or THEME.RED
+        knob:TweenPosition(
+            UDim2.new(on and 1 or 0, on and -24 or 2, 0.5, -11),
+            Enum.EasingDirection.Out,
+            Enum.EasingStyle.Quad,
+            0.08,
+            true
+        )
+    end
+
+    local btn = Instance.new("TextButton", sw)
+    btn.Size = UDim2.fromScale(1,1)
+    btn.BackgroundTransparency = 1
+    btn.Text = ""
+    btn.AutoButtonColor = false
+
+    btn.MouseButton1Click:Connect(function()
+        setEnabled(not ENABLED)
+        update(ENABLED)
     end)
 
-    local set2 = makeRowSwitch("AF_Row2", base + 3, "Auto Refill Water", AA1_WAT1)
-    local set3 = makeRowSwitch("AF_Row3", base + 4, "Auto Collect Watering Can", AA1_WAT3)
-
-    task.defer(function()
-        if AA1_WOOD and AA1_WOOD.ensureRunner then AA1_WOOD.ensureRunner() end
-        if AA1_WAT1 and AA1_WAT1.ensureRunner then AA1_WAT1.ensureRunner() end
-        if AA1_WAT3 and AA1_WAT3.ensureRunner then AA1_WAT3.ensureRunner() end
-
-        if set1 then set1((AA1_WOOD and AA1_WOOD.getEnabled and AA1_WOOD.getEnabled()) or false) end
-        if set2 then set2((AA1_WAT1 and AA1_WAT1.getEnabled and AA1_WAT1.getEnabled()) or false) end
-        if set3 then set3((AA1_WAT3 and AA1_WAT3.getEnabled and AA1_WAT3.getEnabled()) or false) end
-    end)
+    update(false)
 end)
 --===== UFO HUB X • SETTINGS — Smoother 🚀 (A V1 • fixed 3 rows) + Runner Save (per-map) + AA1 =====
 registerRight("Settings", function(scroll)
