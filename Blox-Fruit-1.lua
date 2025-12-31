@@ -691,18 +691,21 @@ end)
 
 registerRight("Home", function(scroll) end)
 registerRight("Settings", function(scroll) end)
---===== UFO HUB X • Home Tab - Farm Level (Model A V1 + AA1 Logic + Auto Quest) =====
+--===== UFO HUB X • Home Tab - Farm Level (Model A V1 + AA1 Logic + Auto Quest + Fly & NoClip) =====
 
 registerRight("Home", function(scroll)
     local RunService = game:GetService("RunService")
     local Players = game:GetService("Players")
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local TweenService = game:GetService("TweenService")
     local LocalPlayer = Players.LocalPlayer
 
     ------------------------------------------------------------------------
-    -- AA1 SYSTEM SETTING
+    -- SETTINGS & POSITION
     ------------------------------------------------------------------------
+    local FARM_POS = Vector3.new(1194.076, 39.845, 1615.463) -- ตำแหน่งลอยฟ้าที่นายให้มา
     local SYSTEM_NAME = "FarmLevelDuck"
+    
     local SAVE = (getgenv and getgenv().UFOX_SAVE) or {
         get = function(_, _, d) return d end,
         set = function() end
@@ -720,43 +723,54 @@ registerRight("Home", function(scroll)
     -- FUNCTION: รับเควส Bandit
     ------------------------------------------------------------------------
     local function getBanditQuest()
-        local args = {
-            "StartQuest",
-            "BanditQuest1",
-            1
-        }
-        local remote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_")
-        remote:InvokeServer(unpack(args))
-        -- print("[MAX] Quest Bandit Accepted!")
+        local args = {"StartQuest", "BanditQuest1", 1}
+        pcall(function()
+            ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer(unpack(args))
+        end)
     end
 
     ------------------------------------------------------------------------
-    -- LOGIC: Farm Level (ถือหมัด + เช็คเควส)
+    -- LOGIC: ระบบบิน/ทะลุแมพ/ล็อคตำแหน่ง (The Core Fly Logic)
     ------------------------------------------------------------------------
     local function applyFarmLogic()
         task.spawn(function()
             while STATE.AutoFarm do
-                -- 1. ระบบถือหมัด Combat
                 local char = LocalPlayer.Character
-                local backpack = LocalPlayer:FindFirstChild("Backpack")
-                if char and backpack then
-                    local tool = backpack:FindFirstChild("Combat")
-                    if tool then
-                        char.Humanoid:EquipTool(tool)
+                local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                
+                if hrp then
+                    -- 1. NoClip (ทะลุทุกอย่าง 100%)
+                    for _, v in ipairs(char:GetDescendants()) do
+                        if v:IsA("BasePart") then
+                            v.CanCollide = false
+                        end
                     end
-                end
 
-                -- 2. ระบบเช็คเควส (ถ้า Visible เป็น false แปลว่าเควสเสร็จ หรือยังไม่มีเควส)
-                local mainGui = LocalPlayer:FindFirstChild("PlayerGui") and LocalPlayer.PlayerGui:FindFirstChild("Main")
-                if mainGui then
-                    local questUI = mainGui:FindFirstChild("Quest")
+                    -- 2. ระบบถือหมัด Combat
+                    local backpack = LocalPlayer:FindFirstChild("Backpack")
+                    local tool = backpack and backpack:FindFirstChild("Combat")
+                    if tool then char.Humanoid:EquipTool(tool) end
+
+                    -- 3. ระบบเช็คเควส
+                    local mainGui = LocalPlayer:FindFirstChild("PlayerGui") and LocalPlayer.PlayerGui:FindFirstChild("Main")
+                    local questUI = mainGui and mainGui:FindFirstChild("Quest")
                     if questUI and questUI.Visible == false then
-                        -- ถ้าเควสปิดอยู่ ให้รับเควสใหม่ทันที
                         getBanditQuest()
                     end
-                end
 
-                task.wait(1) -- รอ 1 วินาทีต่อรอบ เพื่อไม่ให้ Spam Server เกินไป
+                    -- 4. ระบบบินไปที่ตำแหน่ง และ ล็อคตัวละครค้างไว้
+                    local dist = (hrp.Position - FARM_POS).Magnitude
+                    if dist > 5 then
+                        -- ถ้าอยู่ไกล ให้ Tween บินไป (ทะลุแมพ)
+                        local tweenInfo = TweenInfo.new(dist/50, Enum.EasingStyle.Linear)
+                        TweenService:Create(hrp, tweenInfo, {CFrame = CFrame.new(FARM_POS)}):Play()
+                    else
+                        -- ถ้าถึงแล้ว ให้ล็อคความเร็วเป็น 0 (ค้างกลางอากาศ)
+                        hrp.Velocity = Vector3.new(0, 0, 0)
+                        hrp.CFrame = CFrame.new(FARM_POS)
+                    end
+                end
+                RunService.Stepped:Wait() -- ใช้ Stepped เพื่อให้ NoClip ทำงานลื่นที่สุด
             end
         end)
     end
@@ -787,87 +801,54 @@ registerRight("Home", function(scroll)
 
     -- Header: Farm level 🦆
     local header = Instance.new("TextLabel")
-    header.Name = "A_Header"
-    header.Parent = scroll
-    header.BackgroundTransparency = 1
-    header.Size = UDim2.new(1, 0, 0, 36)
-    header.Font = Enum.Font.GothamBold
-    header.TextSize = 16
-    header.TextColor3 = THEME.WHITE
-    header.TextXAlignment = Enum.TextXAlignment.Left
-    header.Text = "Farm level 🦆" 
-    header.LayoutOrder = 1
+    header.Name = "A_Header"; header.Parent = scroll; header.BackgroundTransparency = 1
+    header.Size = UDim2.new(1, 0, 0, 36); header.Font = Enum.Font.GothamBold
+    header.TextSize = 16; header.TextColor3 = THEME.WHITE
+    header.TextXAlignment = Enum.TextXAlignment.Left; header.Text = "Farm level 🦆"; header.LayoutOrder = 1
 
-    -- รายการที่ 1: Farm level auto
+    -- Row 1: Farm level auto
     local function makeFarmSwitch(name, order, labelText)
         local row = Instance.new("Frame")
-        row.Name = name
-        row.Parent = scroll
-        row.Size = UDim2.new(1, -6, 0, 46)
-        row.BackgroundColor3 = THEME.BLACK
-        row.LayoutOrder = order
-        corner(row, 12)
-        stroke(row, 2.2, THEME.GREEN)
+        row.Name = name; row.Parent = scroll; row.Size = UDim2.new(1, -6, 0, 46)
+        row.BackgroundColor3 = THEME.BLACK; row.LayoutOrder = order
+        corner(row, 12); stroke(row, 2.2, THEME.GREEN)
 
         local lab = Instance.new("TextLabel")
-        lab.Parent = row
-        lab.BackgroundTransparency = 1
-        lab.Size = UDim2.new(1, -160, 1, 0)
-        lab.Position = UDim2.new(0, 16, 0, 0)
-        lab.Font = Enum.Font.GothamBold
-        lab.TextSize = 13
-        lab.TextColor3 = THEME.WHITE
-        lab.TextXAlignment = Enum.TextXAlignment.Left
-        lab.Text = labelText
+        lab.Parent = row; lab.BackgroundTransparency = 1; lab.Size = UDim2.new(1, -160, 1, 0)
+        lab.Position = UDim2.new(0, 16, 0, 0); lab.Font = Enum.Font.GothamBold
+        lab.TextSize = 13; lab.TextColor3 = THEME.WHITE
+        lab.TextXAlignment = Enum.TextXAlignment.Left; lab.Text = labelText
 
         local sw = Instance.new("Frame")
-        sw.Parent = row
-        sw.AnchorPoint = Vector2.new(1, 0.5)
-        sw.Position = UDim2.new(1, -12, 0.5, 0)
-        sw.Size = UDim2.fromOffset(52, 26)
-        sw.BackgroundColor3 = THEME.BLACK
-        corner(sw, 13)
+        sw.Parent = row; sw.AnchorPoint = Vector2.new(1, 0.5)
+        sw.Position = UDim2.new(1, -12, 0.5, 0); sw.Size = UDim2.fromOffset(52, 26)
+        sw.BackgroundColor3 = THEME.BLACK; corner(sw, 13)
 
-        local swStroke = Instance.new("UIStroke")
-        swStroke.Parent = sw
-        swStroke.Thickness = 1.8
-
-        local knob = Instance.new("Frame")
-        knob.Parent = sw
-        knob.Size = UDim2.fromOffset(22, 22)
-        knob.BackgroundColor3 = THEME.WHITE
-        knob.Position = UDim2.new(0, 2, 0.5, -11)
-        corner(knob, 11)
+        local swStroke = Instance.new("UIStroke"); swStroke.Parent = sw; swStroke.Thickness = 1.8
+        local knob = Instance.new("Frame"); knob.Parent = sw; knob.Size = UDim2.fromOffset(22, 22)
+        knob.BackgroundColor3 = THEME.WHITE; knob.Position = UDim2.new(0, 2, 0.5, -11); corner(knob, 11)
 
         local function updateVisual(on)
             swStroke.Color = on and THEME.GREEN or THEME.RED
-            game:GetService("TweenService"):Create(knob, TweenInfo.new(0.1), {
+            TweenService:Create(knob, TweenInfo.new(0.1), {
                 Position = UDim2.new(on and 1 or 0, on and -24 or 2, 0.5, -11)
             }):Play()
         end
 
         local btn = Instance.new("TextButton")
-        btn.Parent = sw
-        btn.BackgroundTransparency = 1
-        btn.Size = UDim2.fromScale(1, 1)
-        btn.Text = ""
-
+        btn.Parent = sw; btn.BackgroundTransparency = 1; btn.Size = UDim2.fromScale(1, 1); btn.Text = ""
         btn.MouseButton1Click:Connect(function()
             STATE.AutoFarm = not STATE.AutoFarm
             SaveSet("AutoFarm", STATE.AutoFarm)
             updateVisual(STATE.AutoFarm)
             if STATE.AutoFarm then applyFarmLogic() end
         end)
-
         updateVisual(STATE.AutoFarm)
     end
 
     makeFarmSwitch("FarmLevelAutoRow", 2, "Farm level auto")
 
-    -- AA1: รันทันทีเมื่อโหลดสคริปต์
-    if STATE.AutoFarm then
-        task.defer(applyFarmLogic)
-    end
+    if STATE.AutoFarm then task.defer(applyFarmLogic) end
 end)
 --===== UFO HUB X • SETTINGS — Smoother 🚀 (A V1 • fixed 3 rows) + Runner Save (per-map) + AA1 =====
 registerRight("Settings", function(scroll)
