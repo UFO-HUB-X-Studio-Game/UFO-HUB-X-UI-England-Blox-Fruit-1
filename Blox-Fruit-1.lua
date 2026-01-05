@@ -981,56 +981,59 @@ registerRight("Home", function(scroll)
     header.LayoutOrder = base + 1
 
     -- ===== STORAGE =====
-    local marked = {} -- [chip] = { color = Color3, bb = BillboardGui }
+    local marked = {}   -- [chip] = { color, bb }
     local watchConn
 
-    -- ===== CORE SCAN (DYNAMIC) =====
-    local function scanChips()
+    -- ===== CORE SCAN (FIXED PATH) =====
+    local function scan()
         local root = workspace:FindFirstChild("gameCells")
         if not root then return end
 
-        for _,gc in ipairs(root:GetChildren()) do
-            local cells = gc:FindFirstChild("Cells")
+        for _,gameCell in ipairs(root:GetChildren()) do
+            local cells = gameCell:FindFirstChild("Cells")
             if cells then
                 for _,cell in ipairs(cells:GetChildren()) do
-                    local part = cell:FindFirstChild("Part")
-                    if part then
-                        local chip = part:FindFirstChild("chip")
-                        if chip and chip:IsA("BasePart") then
-                            local hasHL = chip:FindFirstChild("hl") ~= nil
+                    if cell:IsA("Folder") then
+                        local part = cell:FindFirstChild("Part")
+                        if part then
+                            local chip = part:FindFirstChild("chip")
+                            if chip and chip:IsA("BasePart") then
+                                local hl = chip:FindFirstChild("hl")
+                                local hasHL = hl ~= nil
 
-                            -- มี hl → mark
-                            if hasHL and not marked[chip] then
-                                local info = {}
-                                info.color = chip.Color
+                                -- ===== FOUND =====
+                                if hasHL and not marked[chip] then
+                                    local info = {}
+                                    info.color = chip.Color
 
-                                chip.Color = THEME.RED
+                                    chip.Color = THEME.RED
 
-                                local bb = Instance.new("BillboardGui")
-                                bb.Name = "BombEmoji"
-                                bb.Adornee = chip
-                                bb.Size = UDim2.fromOffset(40,40)
-                                bb.StudsOffset = Vector3.new(0,2.5,0)
-                                bb.AlwaysOnTop = true
-                                bb.Parent = chip
+                                    local bb = Instance.new("BillboardGui")
+                                    bb.Name = "BombEmoji"
+                                    bb.Adornee = chip
+                                    bb.Size = UDim2.fromOffset(40,40)
+                                    bb.StudsOffset = Vector3.new(0,2.5,0)
+                                    bb.AlwaysOnTop = true
+                                    bb.Parent = chip
 
-                                local txt = Instance.new("TextLabel", bb)
-                                txt.Size = UDim2.fromScale(1,1)
-                                txt.BackgroundTransparency = 1
-                                txt.Text = "💣"
-                                txt.TextScaled = true
+                                    local txt = Instance.new("TextLabel", bb)
+                                    txt.Size = UDim2.fromScale(1,1)
+                                    txt.BackgroundTransparency = 1
+                                    txt.Text = "💣"
+                                    txt.TextScaled = true
 
-                                info.bb = bb
-                                marked[chip] = info
-                            end
-
-                            -- hl หาย → clear
-                            if not hasHL and marked[chip] then
-                                chip.Color = marked[chip].color
-                                if marked[chip].bb then
-                                    marked[chip].bb:Destroy()
+                                    info.bb = bb
+                                    marked[chip] = info
                                 end
-                                marked[chip] = nil
+
+                                -- ===== REMOVED =====
+                                if not hasHL and marked[chip] then
+                                    chip.Color = marked[chip].color
+                                    if marked[chip].bb then
+                                        marked[chip].bb:Destroy()
+                                    end
+                                    marked[chip] = nil
+                                end
                             end
                         end
                     end
@@ -1039,7 +1042,7 @@ registerRight("Home", function(scroll)
         end
     end
 
-    local function clearChips()
+    local function clearAll()
         for chip,info in pairs(marked) do
             if chip and chip.Parent then
                 chip.Color = info.color
@@ -1113,9 +1116,9 @@ registerRight("Home", function(scroll)
         end
 
         if ENABLED then
-            watchConn = RunService.Heartbeat:Connect(scanChips)
+            watchConn = RunService.Heartbeat:Connect(scan)
         else
-            clearChips()
+            clearAll()
         end
     end)
 
