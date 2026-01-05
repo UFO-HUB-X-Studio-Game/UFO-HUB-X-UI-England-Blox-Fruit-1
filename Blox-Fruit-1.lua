@@ -952,7 +952,7 @@ registerRight("Home", function(scroll)
         if o then o:Destroy() end
     end
 
-    -- ===== UIListLayout =====
+    -- ===== LAYOUT =====
     local list = scroll:FindFirstChildOfClass("UIListLayout")
     if not list then
         list = Instance.new("UIListLayout", scroll)
@@ -980,63 +980,45 @@ registerRight("Home", function(scroll)
     header.Text = "💣 Bomb Finder"
     header.LayoutOrder = base + 1
 
-    -- ===== STORAGE =====
-    local marked = {}   -- [chip] = { color, bb }
-    local watchConn
+    -- ===== STATE =====
+    local marked = {}
+    local conn
+    local ENABLED = false
 
-    -- ===== CORE SCAN (FIXED PATH) =====
+    -- ===== CORE SCAN (NAME-ONLY) =====
     local function scan()
         local root = workspace:FindFirstChild("gameCells")
         if not root then return end
 
-        for _,gameCell in ipairs(root:GetChildren()) do
-            local cells = gameCell:FindFirstChild("Cells")
-            if cells then
-                for _,cell in ipairs(cells:GetChildren()) do
-                    if cell:IsA("Folder") then
-                        local part = cell:FindFirstChild("Part")
-                        if part then
-                            local chip = part:FindFirstChild("chip")
-                            if chip and chip:IsA("BasePart") then
-                                local hl = chip:FindFirstChild("hl")
-                                local hasHL = hl ~= nil
+        for _,obj in ipairs(root:GetDescendants()) do
+            if obj.Name == "hl" then
+                local chip = obj.Parent
+                if chip and not marked[chip] then
+                    local info = { parts={}, bbs={} }
 
-                                -- ===== FOUND =====
-                                if hasHL and not marked[chip] then
-                                    local info = {}
-                                    info.color = chip.Color
+                    for _,p in ipairs(chip:GetDescendants()) do
+                        if p:IsA("BasePart") then
+                            info.parts[p] = p.Color
+                            p.Color = THEME.RED
 
-                                    chip.Color = THEME.RED
+                            local bb = Instance.new("BillboardGui")
+                            bb.Adornee = p
+                            bb.Size = UDim2.fromOffset(40,40)
+                            bb.StudsOffset = Vector3.new(0,2.5,0)
+                            bb.AlwaysOnTop = true
+                            bb.Parent = p
 
-                                    local bb = Instance.new("BillboardGui")
-                                    bb.Name = "BombEmoji"
-                                    bb.Adornee = chip
-                                    bb.Size = UDim2.fromOffset(40,40)
-                                    bb.StudsOffset = Vector3.new(0,2.5,0)
-                                    bb.AlwaysOnTop = true
-                                    bb.Parent = chip
+                            local txt = Instance.new("TextLabel", bb)
+                            txt.Size = UDim2.fromScale(1,1)
+                            txt.BackgroundTransparency = 1
+                            txt.Text = "💣"
+                            txt.TextScaled = true
 
-                                    local txt = Instance.new("TextLabel", bb)
-                                    txt.Size = UDim2.fromScale(1,1)
-                                    txt.BackgroundTransparency = 1
-                                    txt.Text = "💣"
-                                    txt.TextScaled = true
-
-                                    info.bb = bb
-                                    marked[chip] = info
-                                end
-
-                                -- ===== REMOVED =====
-                                if not hasHL and marked[chip] then
-                                    chip.Color = marked[chip].color
-                                    if marked[chip].bb then
-                                        marked[chip].bb:Destroy()
-                                    end
-                                    marked[chip] = nil
-                                end
-                            end
+                            table.insert(info.bbs, bb)
                         end
                     end
+
+                    marked[chip] = info
                 end
             end
         end
@@ -1044,15 +1026,19 @@ registerRight("Home", function(scroll)
 
     local function clearAll()
         for chip,info in pairs(marked) do
-            if chip and chip.Parent then
-                chip.Color = info.color
-                if info.bb then info.bb:Destroy() end
+            for p,col in pairs(info.parts) do
+                if p and p.Parent then
+                    p.Color = col
+                end
+            end
+            for _,bb in ipairs(info.bbs) do
+                if bb then bb:Destroy() end
             end
         end
         table.clear(marked)
     end
 
-    -- ===== ROW 1 (SWITCH) =====
+    -- ===== ROW / SWITCH =====
     local row = Instance.new("Frame")
     row.Name = "BF_Row1"
     row.Parent = scroll
@@ -1088,7 +1074,6 @@ registerRight("Home", function(scroll)
     knob.BackgroundColor3 = THEME.WHITE
     corner(knob,11)
 
-    local ENABLED = false
     local function update(on)
         st.Color = on and THEME.GREEN or THEME.RED
         knob:TweenPosition(
@@ -1104,19 +1089,15 @@ registerRight("Home", function(scroll)
     btn.Size = UDim2.fromScale(1,1)
     btn.BackgroundTransparency = 1
     btn.Text = ""
-    btn.AutoButtonColor = false
 
     btn.MouseButton1Click:Connect(function()
         ENABLED = not ENABLED
         update(ENABLED)
 
-        if watchConn then
-            watchConn:Disconnect()
-            watchConn = nil
-        end
+        if conn then conn:Disconnect(); conn=nil end
 
         if ENABLED then
-            watchConn = RunService.Heartbeat:Connect(scan)
+            conn = RunService.Heartbeat:Connect(scan)
         else
             clearAll()
         end
