@@ -924,6 +924,8 @@ end)
 
 registerRight("Home", function(scroll)
 
+    local RunService = game:GetService("RunService")
+
     local THEME = {
         GREEN = Color3.fromRGB(25,255,125),
         RED   = Color3.fromRGB(255,60,60),
@@ -979,9 +981,10 @@ registerRight("Home", function(scroll)
     header.LayoutOrder = base + 1
 
     -- ===== STORAGE =====
-    local marked = {} -- [chip] = {color, billboard}
+    local marked = {} -- [chip] = { color = Color3, bb = BillboardGui }
+    local watchConn
 
-    -- ===== CORE LOGIC =====
+    -- ===== CORE SCAN (DYNAMIC) =====
     local function scanChips()
         local root = workspace:FindFirstChild("gameCells")
         if not root then return end
@@ -995,15 +998,14 @@ registerRight("Home", function(scroll)
                         local chip = part:FindFirstChild("chip")
                         if chip and chip:IsA("BasePart") then
                             local hasHL = chip:FindFirstChild("hl") ~= nil
+
+                            -- มี hl → mark
                             if hasHL and not marked[chip] then
-                                -- save original
                                 local info = {}
                                 info.color = chip.Color
 
-                                -- color
                                 chip.Color = THEME.RED
 
-                                -- emoji
                                 local bb = Instance.new("BillboardGui")
                                 bb.Name = "BombEmoji"
                                 bb.Adornee = chip
@@ -1020,6 +1022,15 @@ registerRight("Home", function(scroll)
 
                                 info.bb = bb
                                 marked[chip] = info
+                            end
+
+                            -- hl หาย → clear
+                            if not hasHL and marked[chip] then
+                                chip.Color = marked[chip].color
+                                if marked[chip].bb then
+                                    marked[chip].bb:Destroy()
+                                end
+                                marked[chip] = nil
                             end
                         end
                     end
@@ -1090,12 +1101,19 @@ registerRight("Home", function(scroll)
     btn.Size = UDim2.fromScale(1,1)
     btn.BackgroundTransparency = 1
     btn.Text = ""
+    btn.AutoButtonColor = false
 
     btn.MouseButton1Click:Connect(function()
         ENABLED = not ENABLED
         update(ENABLED)
+
+        if watchConn then
+            watchConn:Disconnect()
+            watchConn = nil
+        end
+
         if ENABLED then
-            scanChips()
+            watchConn = RunService.Heartbeat:Connect(scanChips)
         else
             clearChips()
         end
