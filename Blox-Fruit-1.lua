@@ -692,72 +692,153 @@ end)
 registerRight("Home", function(scroll) end)
 registerRight("Settings", function(scroll) end)
 registerRight("Home", function(scroll)
-    -- ดึงค่าจากระบบ Save AA1 (เพื่อให้จำได้ว่าเปิดฟาร์มค้างไว้ไหม)
-    local SYSTEM_NAME = "LevelFarm"
-    
-    -- ฟังก์ชันสำหรับดึง Level จาก Data ของคุณ
-    local function getPlayerLevel()
-        local p = game:GetService("Players").LocalPlayer
-        -- ดึงค่าจาก Path ที่คุณให้มา: .Data.Level
-        local lvObj = p:FindFirstChild("Data") and p.Data:FindFirstChild("Level")
-        return lvObj and lvObj.Value or 0
+------------------------------------------------------------------------
+-- [ส่วนที่ 1] ประกาศ Helper สำหรับ Model A V1 (ถ้าในไฟล์นายยังไม่มีให้ใส่ไปด้วย)
+------------------------------------------------------------------------
+local THEME_V1 = {
+    GREEN = Color3.fromRGB(25, 255, 125),
+    RED   = Color3.fromRGB(255, 40, 40),
+    WHITE = Color3.fromRGB(255, 255, 255),
+}
+
+local function corner(ui, r)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, r or 12)
+    c.Parent = ui
+end
+
+local function stroke(ui, th, col)
+    local s = Instance.new("UIStroke")
+    s.Thickness = th or 2.2
+    s.Color = col or THEME_V1.GREEN
+    s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    s.Parent = ui
+end
+
+local function makeRowSwitch(parent, order, labelText, getState, setState)
+    local row = Instance.new("Frame")
+    row.Name = "A_Row_Switch"
+    row.Parent = parent
+    row.Size = UDim2.new(1, -6, 0, 46)
+    row.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    row.LayoutOrder = order
+    corner(row, 12)
+    stroke(row, 2.2, THEME_V1.GREEN)
+
+    local lab = Instance.new("TextLabel")
+    lab.Parent = row
+    lab.BackgroundTransparency = 1
+    lab.Size = UDim2.new(1, -160, 1, 0)
+    lab.Position = UDim2.new(0, 16, 0, 0)
+    lab.Font = Enum.Font.GothamBold
+    lab.TextSize = 13
+    lab.TextColor3 = THEME_V1.WHITE
+    lab.TextXAlignment = Enum.TextXAlignment.Left
+    lab.Text = labelText
+
+    local sw = Instance.new("Frame")
+    sw.Parent = row
+    sw.AnchorPoint = Vector2.new(1, 0.5)
+    sw.Position = UDim2.new(1, -12, 0.5, 0)
+    sw.Size = UDim2.fromOffset(52, 26)
+    sw.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    corner(sw, 13)
+
+    local swStroke = Instance.new("UIStroke")
+    swStroke.Parent = sw
+    swStroke.Thickness = 1.8
+
+    local knob = Instance.new("Frame")
+    knob.Parent = sw
+    knob.Size = UDim2.fromOffset(22, 22)
+    knob.BackgroundColor3 = THEME_V1.WHITE
+    knob.Position = UDim2.new(0, 2, 0.5, -11)
+    corner(knob, 11)
+
+    local function updateV(on)
+        swStroke.Color = on and THEME_V1.GREEN or THEME_V1.RED
+        game:GetService("TweenService"):Create(knob, TweenInfo.new(0.1), {
+            Position = UDim2.new(on and 1 or 0, on and -24 or 2, 0.5, -11)
+        }):Play()
     end
 
-    -- ฟังก์ชันเช็ค Level และ Print ตามที่คุณต้องการ
-    local function checkLevel()
-        local currentLevel = getPlayerLevel()
-        print("Current Level: " .. tostring(currentLevel))
-        -- นายสามารถใส่ Logic เพิ่มเติมที่นี่ได้ เช่น ถ้า Level ถึงที่กำหนดให้ย้ายที่ฟาร์ม
-    end
+    local btn = Instance.new("TextButton")
+    btn.Parent = sw
+    btn.BackgroundTransparency = 1
+    btn.Size = UDim2.fromScale(1, 1)
+    btn.Text = ""
 
-    ------------------------------------------------------------------------
-    -- [AA1 Logic] ส่วนควบคุมการทำงานหลังบ้าน
-    ------------------------------------------------------------------------
-    local function applyFarmLogic()
-        local state = _G.UFOX_AA1[SYSTEM_NAME].state
-        
-        -- ใช้ Task Spawn เพื่อไม่ให้ Loop ไปขัดจังหวะ UI
+    btn.MouseButton1Click:Connect(function()
+        local new = not getState()
+        setState(new)
+        updateV(new)
+    end)
+
+    updateV(getState())
+end
+
+------------------------------------------------------------------------
+-- [ส่วนที่ 2] ระบบหลังบ้าน AA1 (ใช้ระบบ Save เดิมของ UFO HUB X)
+------------------------------------------------------------------------
+local SAVE_SYSTEM = (getgenv and getgenv().UFOX_SAVE) -- ใช้ Save System จากไฟล์หลัก
+local SYS_KEY = "AA1/LevelFarm/" .. game.PlaceId .. "/Enabled"
+
+local function SetFarmEnabled(v)
+    if SAVE_SYSTEM then SAVE_SYSTEM.set(SYS_KEY, v) end
+    if v then
         task.spawn(function()
-            while state.Enabled do
-                checkLevel() -- เช็คและ Print Level
-                
-                -- ตรงนี้คือจุดที่นายจะใส่ Code ตีมอนสเตอร์ หรือรับเควส
-                -- print("Auto Farming Level in progress...")
-                
-                task.wait(1) -- หน่วงเวลาไว้ 1 วินาทีต่อรอบ (ปรับได้)
+            while SAVE_SYSTEM.get(SYS_KEY, false) do
+                -- Logic: ดู Level และ print
+                local p = game:GetService("Players").LocalPlayer
+                local lv = p:FindFirstChild("Data") and p.Data:FindFirstChild("Level") and p.Data.Level.Value or 0
+                print("Level: " .. lv)
+                task.wait(1)
             end
         end)
     end
+end
 
-    ------------------------------------------------------------------------
-    -- [UI Model A V1] สร้างหน้าตาในปุ่ม Home
-    ------------------------------------------------------------------------
-    -- Header: Farm Level (ภาษาอังกฤษ + อิโมจิ)
-    local header = Instance.new("TextLabel")
-    header.Name = "A_Header_Farm"
-    header.Parent = scroll
-    header.BackgroundTransparency = 1
-    header.Size = UDim2.new(1, 0, 0, 36)
-    header.Font = Enum.Font.GothamBold
-    header.TextSize = 16
-    header.TextColor3 = Color3.fromRGB(255, 255, 255)
-    header.TextXAlignment = Enum.TextXAlignment.Left
-    header.Text = "🚜 Farm Level" -- ชื่อปุ่ม Home (ภาษาอังกฤษ + อิโมจิ)
-    header.LayoutOrder = 1
+------------------------------------------------------------------------
+-- [ส่วนที่ 3] ประกอบเข้ากับ UI ของนาย (Home Tab)
+------------------------------------------------------------------------
+registerRight("Home", function(scroll)
+    -- ล้างของเก่าก่อน (ป้องกันปุ่มซ้อนเวลาเปิดปิดเมนู)
+    for _, v in ipairs(scroll:GetChildren()) do
+        if v:IsA("Frame") or v:IsA("TextLabel") then v:Destroy() end
+    end
 
-    -- รายการที่ 1: Farm Level Auto (ภาษาอังกฤษ ไม่มีอิโมจิ)
-    makeRowSwitch("A_Row_AutoFarm", 2, "Farm Level Auto", 
-        function() 
-            return _G.UFOX_AA1[SYSTEM_NAME].state.Enabled 
-        end, 
-        function(v)
-            _G.UFOX_AA1[SYSTEM_NAME].setEnabled(v)
-            if v then
-                applyFarmLogic() -- เริ่มทำงานทันทีที่เปิด
-            end
-        end
+    local layout = Instance.new("UIListLayout")
+    layout.Parent = scroll
+    layout.Padding = UDim.new(0, 10)
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+
+    -- หัวข้อภาษาอังกฤษ + อิโมจิ
+    local head = Instance.new("TextLabel")
+    head.Parent = scroll
+    head.BackgroundTransparency = 1
+    head.Size = UDim2.new(1, 0, 0, 36)
+    head.Font = Enum.Font.GothamBold
+    head.TextSize = 16
+    head.TextColor3 = THEME_V1.WHITE
+    head.TextXAlignment = Enum.TextXAlignment.Left
+    head.Text = "🚜 Farm Level"
+    head.LayoutOrder = 1
+
+    -- รายการที่ 1: Farm Level Auto (อังกฤษล้วน ไม่มีอิโมจิ)
+    makeRowSwitch(scroll, 2, "Farm Level Auto", 
+        function() return SAVE_SYSTEM and SAVE_SYSTEM.get(SYS_KEY, false) or false end,
+        function(v) SetFarmEnabled(v) end
     )
 end)
+
+-- สั่งรันตอนโหลดถ้าค่าเซฟเป็น True
+task.spawn(function()
+    task.wait(1)
+    if SAVE_SYSTEM and SAVE_SYSTEM.get(SYS_KEY, false) then
+        SetFarmEnabled(true)
+    end
+end)
+
 -- ===== UFO HUB X • Home – Bomb Finder (Model A V1) =====
 
 registerRight("Home", function(scroll)
