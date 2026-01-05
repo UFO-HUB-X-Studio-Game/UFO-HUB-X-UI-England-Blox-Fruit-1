@@ -920,6 +920,126 @@ registerRight("Home", function(scroll)
     makeFarmSwitch("FarmLevelAutoRow", 2, "Farm level auto")
     if STATE.AutoFarm then task.defer(applyFarmLogic) end
 end)
+-- ===== UFO HUB X • Home – Bomb Finder (Model A V1) =====
+
+registerRight("Home", function(scroll)
+
+    -- ===== THEME (A V1) =====
+    local THEME = {
+        GREEN = Color3.fromRGB(25,255,125),
+        RED   = Color3.fromRGB(255,60,60),
+        WHITE = Color3.fromRGB(255,255,255),
+        BLACK = Color3.fromRGB(0,0,0),
+    }
+
+    local function corner(ui,r)
+        local c = Instance.new("UICorner")
+        c.CornerRadius = UDim.new(0, r or 12)
+        c.Parent = ui
+    end
+
+    local function stroke(ui,t,col)
+        local s = Instance.new("UIStroke")
+        s.Thickness = t or 2.2
+        s.Color = col or THEME.GREEN
+        s.Parent = ui
+    end
+
+    -- ===== CLEANUP =====
+    for _,n in ipairs({"BF_Header","BF_Row1"}) do
+        local o = scroll:FindFirstChild(n)
+        if o then o:Destroy() end
+    end
+
+    -- ===== ONE UIListLayout =====
+    local list = scroll:FindFirstChildOfClass("UIListLayout")
+    if not list then
+        list = Instance.new("UIListLayout", scroll)
+        list.Padding = UDim.new(0,12)
+        list.SortOrder = Enum.SortOrder.LayoutOrder
+    end
+    scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+
+    local base = 0
+    for _,c in ipairs(scroll:GetChildren()) do
+        if c:IsA("GuiObject") and c ~= list then
+            base = math.max(base, c.LayoutOrder or 0)
+        end
+    end
+
+    -- ===== HEADER =====
+    local header = Instance.new("TextLabel")
+    header.Name = "BF_Header"
+    header.Parent = scroll
+    header.Size = UDim2.new(1,0,0,36)
+    header.BackgroundTransparency = 1
+    header.Font = Enum.Font.GothamBold
+    header.TextSize = 16
+    header.TextColor3 = THEME.WHITE
+    header.TextXAlignment = Enum.TextXAlignment.Left
+    header.Text = "💣 Bomb Finder"
+    header.LayoutOrder = base + 1
+
+    -- ===== FIND LOGIC =====
+    local function findHL()
+        local root = workspace:FindFirstChild("gameCells")
+        if not root then return false end
+
+        for _,gc in ipairs(root:GetChildren()) do
+            local cells = gc:FindFirstChild("Cells")
+            if cells then
+                for _,part in ipairs(cells:GetDescendants()) do
+                    if part.Name == "hl" then
+                        return true
+                    end
+                end
+            end
+        end
+        return false
+    end
+
+    -- ===== ROW 1 =====
+    local row = Instance.new("Frame")
+    row.Name = "BF_Row1"
+    row.Parent = scroll
+    row.Size = UDim2.new(1,-6,0,46)
+    row.BackgroundColor3 = THEME.BLACK
+    corner(row,12)
+    stroke(row,2.2,THEME.GREEN)
+    row.LayoutOrder = base + 2
+
+    local lab = Instance.new("TextLabel", row)
+    lab.BackgroundTransparency = 1
+    lab.Position = UDim2.new(0,16,0,0)
+    lab.Size = UDim2.new(1,-160,1,0)
+    lab.Font = Enum.Font.GothamBold
+    lab.TextSize = 13
+    lab.TextColor3 = THEME.WHITE
+    lab.TextXAlignment = Enum.TextXAlignment.Left
+    lab.Text = "Find Bomb"
+
+    local status = Instance.new("TextLabel", row)
+    status.AnchorPoint = Vector2.new(1,0.5)
+    status.Position = UDim2.new(1,-16,0.5,0)
+    status.Size = UDim2.new(0,120,1,0)
+    status.BackgroundTransparency = 1
+    status.Font = Enum.Font.GothamBold
+    status.TextSize = 13
+    status.TextXAlignment = Enum.TextXAlignment.Right
+
+    -- ===== UPDATE STATUS =====
+    local function update()
+        if findHL() then
+            status.Text = "💣 FOUND"
+            status.TextColor3 = THEME.GREEN
+        else
+            status.Text = "NOT FOUND"
+            status.TextColor3 = THEME.RED
+        end
+    end
+
+    update()
+end)
 --===== UFO HUB X • SETTINGS — Smoother 🚀 (A V1 • fixed 3 rows) + Runner Save (per-map) + AA1 =====
 registerRight("Settings", function(scroll)
     local TweenService = game:GetService("TweenService")
