@@ -838,7 +838,6 @@ task.spawn(function()
         SetFarmEnabled(true)
     end
 end)
-
 -- ===== UFO HUB X • Home – Bomb Finder (Model A V1) =====
 
 registerRight("Home", function(scroll)
