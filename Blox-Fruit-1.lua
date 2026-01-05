@@ -692,103 +692,68 @@ end)
 registerRight("Home", function(scroll) end)
 registerRight("Settings", function(scroll) end)
 registerRight("Home", function(scroll)
--- ========================================================================
--- UFO HUB X • Home Tab (Model A V1 + AA1 Level Farm)
--- ========================================================================
+-- [[ UFO HUB X • Farm Level Module (ก๊อปวางส่วนนี้ลงในไฟล์ UI-England.lua) ]]
 
 registerRight("Home", function(scroll)
     local TweenService = game:GetService("TweenService")
-    local Players = game:GetService("Players")
-    local LocalPlayer = Players.LocalPlayer
-
-    ------------------------------------------------------------------------
-    -- 1. AA1 SAVE SYSTEM (เชื่อมกับระบบเซฟของ UFO HUB)
-    ------------------------------------------------------------------------
-    local SAVE = (getgenv and getgenv().UFOX_SAVE) or {
-        get = function(_, _, d) return d end,
-        set = function() end
-    }
-
-    local SCOPE = ("AA1/LevelFarm/%d"):format(tonumber(game.PlaceId) or 0)
     
-    local function SaveGet(key, default)
-        local ok, v = pcall(function() return SAVE.get(SCOPE.."/"..key, default) end)
-        return ok and v or default
-    end
+    -- 1. เชื่อมต่อระบบ SAVE AA1 (UFO HUB X Original)
+    local SAVE = getgenv().UFOX_SAVE
+    local SCOPE = ("LevelFarm/%d"):format(game.PlaceId)
 
-    local function SaveSet(key, value)
-        pcall(function() SAVE.set(SCOPE.."/"..key, value) end)
-    end
+    local function SaveGet(k, d) return SAVE.get(SCOPE.."/"..k, d) end
+    local function SaveSet(k, v) SAVE.set(SCOPE.."/"..k, v) end
 
-    ------------------------------------------------------------------------
     -- 2. THEME & HELPERS (Model A V1 Style)
-    ------------------------------------------------------------------------
     local THEME = {
-        GREEN = Color3.fromRGB(25,255,125),
-        RED   = Color3.fromRGB(255,40,40),
-        WHITE = Color3.fromRGB(255,255,255),
-        BLACK = Color3.fromRGB(0,0,0),
+        GREEN = Color3.fromRGB(25, 255, 125),
+        RED   = Color3.fromRGB(255, 40, 40),
+        WHITE = Color3.fromRGB(255, 255, 255),
+        BLACK = Color3.fromRGB(0, 0, 0),
     }
 
     local function corner(ui, r)
-        local c = Instance.new("UICorner")
+        local c = Instance.new("UICorner", ui)
         c.CornerRadius = UDim.new(0, r or 12)
-        c.Parent = ui
     end
 
     local function stroke(ui, th, col)
-        local s = Instance.new("UIStroke")
+        local s = Instance.new("UIStroke", ui)
         s.Thickness = th or 2.2
         s.Color = col or THEME.GREEN
         s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-        s.Parent = ui
     end
 
-    local function tween(o, p, d)
-        TweenService:Create(o, TweenInfo.new(d or 0.08), p):Play()
-    end
-
-    ------------------------------------------------------------------------
-    -- 3. FARM LOGIC (เช็ค Level ตามที่นายสั่ง)
-    ------------------------------------------------------------------------
-    local farmEnabled = SaveGet("FarmLevelAuto", false)
-
-    local function checkLevel()
-        -- Path: game.Players.LocalPlayer.Data.Level
-        local data = LocalPlayer:FindFirstChild("Data")
-        local levelObj = data and data:FindFirstChild("Level")
-        
-        if levelObj then
-            local currentLevel = levelObj.Value
-            print("Level:", currentLevel) -- print(Level) ตามสั่ง
-        else
-            print("Level Data Not Found!")
-        end
-    end
-
-    -- Loop ทำงานเบื้องหลัง
-    task.spawn(function()
-        while true do
-            if farmEnabled then
-                checkLevel()
+    -- 3. ระบบฟาร์ม Level Logic (ดึงค่าจาก Data.Level)
+    local farmEnabled = SaveGet("AutoFarm", false)
+    
+    local function runFarmLoop()
+        task.spawn(function()
+            while farmEnabled do
+                local lp = game.Players.LocalPlayer
+                local lv = lp:FindFirstChild("Data") and lp.Data:FindFirstChild("Level") and lp.Data.Level.Value or 0
+                print("Current Level: " .. tostring(lv))
+                task.wait(1)
             end
-            task.wait(1) -- เช็คทุกๆ 1 วินาที
-        end
-    end)
+        end)
+    end
 
-    ------------------------------------------------------------------------
-    -- 4. UI CONSTRUCTION (Model A V1)
-    ------------------------------------------------------------------------
-    -- จัดระเบียบ Scroll
+    -- 4. UI Construction
     local vlist = scroll:FindFirstChildOfClass("UIListLayout") or Instance.new("UIListLayout", scroll)
     vlist.Padding = UDim.new(0, 12)
     vlist.SortOrder = Enum.SortOrder.LayoutOrder
     scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 
-    -- HEADER: 🚜 Farm Level (อังกฤษ + อิโมจิ)
-    local header = Instance.new("TextLabel")
-    header.Name = "A_Header"
-    header.Parent = scroll
+    -- ล้าง UI เก่าเฉพาะส่วนนี้ (ป้องกันปุ่มซ้อน)
+    for _, child in ipairs(scroll:GetChildren()) do
+        if child.Name == "Farm_Header" or child.Name == "Farm_Row" then
+            child:Destroy()
+        end
+    end
+
+    -- Header: 🚜 Farm Level
+    local header = Instance.new("TextLabel", scroll)
+    header.Name = "Farm_Header"
     header.BackgroundTransparency = 1
     header.Size = UDim2.new(1, 0, 0, 36)
     header.Font = Enum.Font.GothamBold
@@ -798,75 +763,61 @@ registerRight("Home", function(scroll)
     header.Text = "🚜 Farm Level"
     header.LayoutOrder = 1
 
-    -- ROW: Farm Level Auto (อังกฤษล้วน ไม่มีอิโมจิ)
-    local function makeRowSwitch(name, order, labelText, getState, setState)
-        local row = Instance.new("Frame")
-        row.Name = name
-        row.Parent = scroll
-        row.Size = UDim2.new(1, -6, 0, 46)
-        row.BackgroundColor3 = THEME.BLACK
-        row.LayoutOrder = order
-        corner(row, 12)
-        stroke(row, 2.2, THEME.GREEN)
+    -- Row Switch: Farm Level Auto
+    local row = Instance.new("Frame", scroll)
+    row.Name = "Farm_Row"
+    row.Size = UDim2.new(1, -6, 0, 46)
+    row.BackgroundColor3 = THEME.BLACK
+    row.LayoutOrder = 2
+    corner(row)
+    stroke(row)
 
-        local lab = Instance.new("TextLabel")
-        lab.Parent = row
-        lab.BackgroundTransparency = 1
-        lab.Size = UDim2.new(1, -160, 1, 0)
-        lab.Position = UDim2.new(0, 16, 0, 0)
-        lab.Font = Enum.Font.GothamBold
-        lab.TextSize = 13
-        lab.TextColor3 = THEME.WHITE
-        lab.TextXAlignment = Enum.TextXAlignment.Left
-        lab.Text = labelText
+    local lab = Instance.new("TextLabel", row)
+    lab.BackgroundTransparency = 1
+    lab.Size = UDim2.new(1, -160, 1, 0)
+    lab.Position = UDim2.new(0, 16, 0, 0)
+    lab.Font = Enum.Font.GothamBold
+    lab.TextSize = 13
+    lab.TextColor3 = THEME.WHITE
+    lab.TextXAlignment = Enum.TextXAlignment.Left
+    lab.Text = "Farm Level Auto"
 
-        local sw = Instance.new("Frame")
-        sw.Parent = row
-        sw.AnchorPoint = Vector2.new(1,0.5)
-        sw.Position = UDim2.new(1, -12, 0.5, 0)
-        sw.Size = UDim2.fromOffset(52,26)
-        sw.BackgroundColor3 = THEME.BLACK
-        corner(sw, 13)
+    local sw = Instance.new("Frame", row)
+    sw.AnchorPoint = Vector2.new(1, 0.5)
+    sw.Position = UDim2.new(1, -12, 0.5, 0)
+    sw.Size = UDim2.fromOffset(52, 26)
+    sw.BackgroundColor3 = THEME.BLACK
+    corner(sw, 13)
+    local swStroke = Instance.new("UIStroke", sw)
+    swStroke.Thickness = 1.8
 
-        local swStroke = Instance.new("UIStroke")
-        swStroke.Parent = sw
-        swStroke.Thickness = 1.8
+    local knob = Instance.new("Frame", sw)
+    knob.Size = UDim2.fromOffset(22, 22)
+    knob.BackgroundColor3 = THEME.WHITE
+    corner(knob, 11)
 
-        local knob = Instance.new("Frame")
-        knob.Parent = sw
-        knob.Size = UDim2.fromOffset(22,22)
-        knob.BackgroundColor3 = THEME.WHITE
-        knob.Position = UDim2.new(0,2,0.5,-11)
-        corner(knob,11)
-
-        local function update(on)
-            swStroke.Color = on and THEME.GREEN or THEME.RED
-            tween(knob, {Position = UDim2.new(on and 1 or 0, on and -24 or 2, 0.5, -11)}, 0.08)
-        end
-
-        local btn = Instance.new("TextButton")
-        btn.Parent = sw
-        btn.BackgroundTransparency = 1
-        btn.Size = UDim2.fromScale(1,1)
-        btn.Text = ""
-
-        btn.MouseButton1Click:Connect(function()
-            local new = not getState()
-            setState(new)
-            update(new)
-        end)
-
-        update(getState())
-        return row
+    local function updateVisual(on)
+        swStroke.Color = on and THEME.GREEN or THEME.RED
+        TweenService:Create(knob, TweenInfo.new(0.1), {
+            Position = UDim2.new(on and 1 or 0, on and -24 or 2, 0.5, -11)
+        }):Play()
     end
 
-    -- สร้างปุ่มสวิตช์จริง
-    makeRowSwitch("FarmRow", 2, "Farm Level Auto", function()
-        return farmEnabled
-    end, function(v)
-        farmEnabled = v
-        SaveSet("FarmLevelAuto", v)
+    local btn = Instance.new("TextButton", sw)
+    btn.BackgroundTransparency = 1
+    btn.Size = UDim2.fromScale(1, 1)
+    btn.Text = ""
+
+    btn.MouseButton1Click:Connect(function()
+        farmEnabled = not farmEnabled
+        SaveSet("AutoFarm", farmEnabled)
+        updateVisual(farmEnabled)
+        if farmEnabled then runFarmLoop() end
     end)
+
+    -- เริ่มทำงานตามค่าเซฟ
+    updateVisual(farmEnabled)
+    if farmEnabled then runFarmLoop() end
 end)
 -- ===== UFO HUB X • Home – Bomb Finder (Model A V1) =====
 
