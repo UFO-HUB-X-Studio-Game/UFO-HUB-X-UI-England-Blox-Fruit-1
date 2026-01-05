@@ -981,11 +981,11 @@ registerRight("Home", function(scroll)
     header.LayoutOrder = base + 1
 
     -- ===== STATE =====
-    local marked = {}
+    local marked = {}   -- [chip] = { parts = { [BasePart]=Color3 }, bbs = {} }
     local conn
     local ENABLED = false
 
-    -- ===== CORE SCAN (NAME-ONLY) =====
+    -- ===== CORE SCAN : SHOW ALL hl =====
     local function scan()
         local root = workspace:FindFirstChild("gameCells")
         if not root then return end
@@ -994,7 +994,7 @@ registerRight("Home", function(scroll)
             if obj.Name == "hl" then
                 local chip = obj.Parent
                 if chip and not marked[chip] then
-                    local info = { parts={}, bbs={} }
+                    local info = { parts = {}, bbs = {} }
 
                     for _,p in ipairs(chip:GetDescendants()) do
                         if p:IsA("BasePart") then
@@ -1002,6 +1002,7 @@ registerRight("Home", function(scroll)
                             p.Color = THEME.RED
 
                             local bb = Instance.new("BillboardGui")
+                            bb.Name = "BombEmoji"
                             bb.Adornee = p
                             bb.Size = UDim2.fromOffset(40,40)
                             bb.StudsOffset = Vector3.new(0,2.5,0)
