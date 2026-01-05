@@ -924,7 +924,6 @@ end)
 
 registerRight("Home", function(scroll)
 
-    -- ===== THEME (A V1) =====
     local THEME = {
         GREEN = Color3.fromRGB(25,255,125),
         RED   = Color3.fromRGB(255,60,60),
@@ -951,12 +950,11 @@ registerRight("Home", function(scroll)
         if o then o:Destroy() end
     end
 
-    -- ===== ONE UIListLayout =====
+    -- ===== UIListLayout =====
     local list = scroll:FindFirstChildOfClass("UIListLayout")
     if not list then
         list = Instance.new("UIListLayout", scroll)
         list.Padding = UDim.new(0,12)
-        list.SortOrder = Enum.SortOrder.LayoutOrder
     end
     scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 
@@ -980,25 +978,67 @@ registerRight("Home", function(scroll)
     header.Text = "💣 Bomb Finder"
     header.LayoutOrder = base + 1
 
-    -- ===== FIND LOGIC =====
-    local function findHL()
+    -- ===== STORAGE =====
+    local marked = {} -- [chip] = {color, billboard}
+
+    -- ===== CORE LOGIC =====
+    local function scanChips()
         local root = workspace:FindFirstChild("gameCells")
-        if not root then return false end
+        if not root then return end
 
         for _,gc in ipairs(root:GetChildren()) do
             local cells = gc:FindFirstChild("Cells")
             if cells then
-                for _,part in ipairs(cells:GetDescendants()) do
-                    if part.Name == "hl" then
-                        return true
+                for _,cell in ipairs(cells:GetChildren()) do
+                    local part = cell:FindFirstChild("Part")
+                    if part then
+                        local chip = part:FindFirstChild("chip")
+                        if chip and chip:IsA("BasePart") then
+                            local hasHL = chip:FindFirstChild("hl") ~= nil
+                            if hasHL and not marked[chip] then
+                                -- save original
+                                local info = {}
+                                info.color = chip.Color
+
+                                -- color
+                                chip.Color = THEME.RED
+
+                                -- emoji
+                                local bb = Instance.new("BillboardGui")
+                                bb.Name = "BombEmoji"
+                                bb.Adornee = chip
+                                bb.Size = UDim2.fromOffset(40,40)
+                                bb.StudsOffset = Vector3.new(0,2.5,0)
+                                bb.AlwaysOnTop = true
+                                bb.Parent = chip
+
+                                local txt = Instance.new("TextLabel", bb)
+                                txt.Size = UDim2.fromScale(1,1)
+                                txt.BackgroundTransparency = 1
+                                txt.Text = "💣"
+                                txt.TextScaled = true
+
+                                info.bb = bb
+                                marked[chip] = info
+                            end
+                        end
                     end
                 end
             end
         end
-        return false
     end
 
-    -- ===== ROW 1 =====
+    local function clearChips()
+        for chip,info in pairs(marked) do
+            if chip and chip.Parent then
+                chip.Color = info.color
+                if info.bb then info.bb:Destroy() end
+            end
+        end
+        table.clear(marked)
+    end
+
+    -- ===== ROW 1 (SWITCH) =====
     local row = Instance.new("Frame")
     row.Name = "BF_Row1"
     row.Parent = scroll
@@ -1018,27 +1058,50 @@ registerRight("Home", function(scroll)
     lab.TextXAlignment = Enum.TextXAlignment.Left
     lab.Text = "Find Bomb"
 
-    local status = Instance.new("TextLabel", row)
-    status.AnchorPoint = Vector2.new(1,0.5)
-    status.Position = UDim2.new(1,-16,0.5,0)
-    status.Size = UDim2.new(0,120,1,0)
-    status.BackgroundTransparency = 1
-    status.Font = Enum.Font.GothamBold
-    status.TextSize = 13
-    status.TextXAlignment = Enum.TextXAlignment.Right
+    local sw = Instance.new("Frame", row)
+    sw.AnchorPoint = Vector2.new(1,0.5)
+    sw.Position = UDim2.new(1,-12,0.5,0)
+    sw.Size = UDim2.fromOffset(52,26)
+    sw.BackgroundColor3 = THEME.BLACK
+    corner(sw,13)
 
-    -- ===== UPDATE STATUS =====
-    local function update()
-        if findHL() then
-            status.Text = "💣 FOUND"
-            status.TextColor3 = THEME.GREEN
-        else
-            status.Text = "NOT FOUND"
-            status.TextColor3 = THEME.RED
-        end
+    local st = Instance.new("UIStroke", sw)
+    st.Thickness = 1.8
+
+    local knob = Instance.new("Frame", sw)
+    knob.Size = UDim2.fromOffset(22,22)
+    knob.Position = UDim2.new(0,2,0.5,-11)
+    knob.BackgroundColor3 = THEME.WHITE
+    corner(knob,11)
+
+    local ENABLED = false
+    local function update(on)
+        st.Color = on and THEME.GREEN or THEME.RED
+        knob:TweenPosition(
+            UDim2.new(on and 1 or 0, on and -24 or 2, 0.5, -11),
+            Enum.EasingDirection.Out,
+            Enum.EasingStyle.Quad,
+            0.08,
+            true
+        )
     end
 
-    update()
+    local btn = Instance.new("TextButton", sw)
+    btn.Size = UDim2.fromScale(1,1)
+    btn.BackgroundTransparency = 1
+    btn.Text = ""
+
+    btn.MouseButton1Click:Connect(function()
+        ENABLED = not ENABLED
+        update(ENABLED)
+        if ENABLED then
+            scanChips()
+        else
+            clearChips()
+        end
+    end)
+
+    update(false)
 end)
 --===== UFO HUB X • SETTINGS — Smoother 🚀 (A V1 • fixed 3 rows) + Runner Save (per-map) + AA1 =====
 registerRight("Settings", function(scroll)
