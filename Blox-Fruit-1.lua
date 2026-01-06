@@ -709,14 +709,14 @@ registerRight("Home", function(scroll)
     local function SaveSet(k, v) pcall(function() SAVE.set(SCOPE.."/"..k, v) end) end
 
     ------------------------------------------------------------------------
-    -- [2] ตัวแปรตำแหน่ง
+    -- [2] ตัวแปรตำแหน่ง (Jungle - Monkey)
     ------------------------------------------------------------------------
-    local farmLevelAuto = SaveGet("AutoFarmState", false)
-    local posNPC = Vector3.new(1059.757, 16.398, 1549.047)
-    local posFarm = Vector3.new(1193.877, 60.000, 1614.491)
-    local posGround = Vector3.new(1193.798, 16.743, 1615.949)
+    local farmLevelAuto = SaveGet("AutoFarmStateJungle", false)
+    local posNPC = Vector3.new(-1601.473, 36.978, 152.508)
+    local posFarm = Vector3.new(-1611.965, 60.285, -54.932)
+    local posGround = Vector3.new(-1619.381, 22.966, -56.678)
     local auraRange = 350
-    local targetName = "Bandit"
+    local targetName = "Monkey"
 
     local oldBrightness = Lighting.Brightness
     local oldShadows = Lighting.GlobalShadows
@@ -783,7 +783,7 @@ registerRight("Home", function(scroll)
     end
 
     ------------------------------------------------------------------------
-    -- [4] LOOP การทำงาน (Noclip & Bring Mobs)
+    -- [4] LOOP การทำงาน
     ------------------------------------------------------------------------
     
     RunService.Stepped:Connect(function()
@@ -868,7 +868,7 @@ registerRight("Home", function(scroll)
                         hrp.CFrame = CFrame.new(targetPos)
                         
                         if not isQuestActive() then
-                            game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("StartQuest", "BanditQuest1", 1)
+                            game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("StartQuest", "JungleQuest", 1)
                             task.wait(0.5)
                         end
                     end
@@ -879,18 +879,18 @@ registerRight("Home", function(scroll)
     end)
 
     ------------------------------------------------------------------------
-    -- [5] UI & Reset Logic (เพิ่มระบบฆ่าตัวตายเมื่อปิด)
+    -- [5] UI & Reset Logic
     ------------------------------------------------------------------------
     local THEME = { GREEN = Color3.fromRGB(25, 255, 125), RED = Color3.fromRGB(255, 40, 40), WHITE = Color3.fromRGB(255, 255, 255), BLACK = Color3.fromRGB(0, 0, 0) }
-    for _, child in ipairs(scroll:GetChildren()) do if child.Name == "A_Header_Farm" or child.Name == "A_Row_Farm" then child:Destroy() end end
+    for _, child in ipairs(scroll:GetChildren()) do if child.Name == "A_Header_Farm" or child.Name == "A_Row_Jungle" then child:Destroy() end end
 
     local row = Instance.new("Frame", scroll)
-    row.Name = "A_Row_Farm"; row.Size = UDim2.new(1, -6, 0, 46); row.BackgroundColor3 = THEME.BLACK; row.LayoutOrder = 2
+    row.Name = "A_Row_Jungle"; row.Size = UDim2.new(1, -6, 0, 46); row.BackgroundColor3 = THEME.BLACK; row.LayoutOrder = 3
     local rowCorner = Instance.new("UICorner", row); rowCorner.CornerRadius = UDim.new(0, 12)
     local rowStroke = Instance.new("UIStroke", row); rowStroke.Thickness = 2.2; rowStroke.Color = THEME.GREEN; rowStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
     local label = Instance.new("TextLabel", row)
-    label.BackgroundTransparency = 1; label.Size = UDim2.new(1, -160, 1, 0); label.Position = UDim2.new(0, 16, 0, 0); label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Bandit Farm (Reset On Off)"
+    label.BackgroundTransparency = 1; label.Size = UDim2.new(1, -160, 1, 0); label.Position = UDim2.new(0, 16, 0, 0); label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Monkey Farm (Jungle)"
 
     local sw = Instance.new("Frame", row)
     sw.AnchorPoint = Vector2.new(1, 0.5); sw.Position = UDim2.new(1, -12, 0.5, 0); sw.Size = UDim2.fromOffset(52, 26); sw.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
@@ -912,18 +912,15 @@ registerRight("Home", function(scroll)
     btn.BackgroundTransparency = 1; btn.Size = UDim2.fromScale(1, 1); btn.Text = ""
     btn.MouseButton1Click:Connect(function()
         farmLevelAuto = not farmLevelAuto
-        SaveSet("AutoFarmState", farmLevelAuto)
+        SaveSet("AutoFarmStateJungle", farmLevelAuto)
         updateVisual(farmLevelAuto)
         
-        -- ### ส่วนที่เพิ่ม: เมื่อปิด ให้รีเซ็ตตัวละคร ###
         if not farmLevelAuto then
             pcall(function()
                 local char = LP.Character
                 if char then
                     local hum = char:FindFirstChildOfClass("Humanoid")
-                    if hum then
-                        hum.Health = 0 -- ฆ่าตัวตายเพื่อรีเซ็ต
-                    end
+                    if hum then hum.Health = 0 end
                 end
             end)
         end
