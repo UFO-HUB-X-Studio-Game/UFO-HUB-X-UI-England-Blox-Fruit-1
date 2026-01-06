@@ -745,8 +745,15 @@ registerRight("Settings", function(scroll) end)
     end
 
     local function syncAttackAll()
-        -- แก้ไขจุดนี้: ถ้าไม่มีเควส (กำลังบินไปรับ) จะไม่ต่อยเด็ดขาด
-        if not farmLevelAuto or not isQuestActive() then return end
+        local char = LP.Character
+        if not char or not farmLevelAuto or not isQuestActive() then return end
+        
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
+
+        -- ### แก้ไข: ถ้าอยู่ใกล้ตำแหน่งรับภารกิจ (NPC) จะไม่ตี ###
+        local distToNPC = (hrp.Position - posNPC).Magnitude
+        if distToNPC < 20 then return end 
         
         equipCombat()
         local netRE = game:GetService("ReplicatedStorage"):WaitForChild("Modules"):WaitForChild("Net")
@@ -755,16 +762,15 @@ registerRight("Settings", function(scroll) end)
             netRE:WaitForChild("RE/RegisterAttack"):FireServer(0.5)
             for _, v in ipairs(enemiesFolder:GetChildren()) do
                 if v.Name == targetName and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
-                    local hrp = v:FindFirstChild("HumanoidRootPart")
-                    if hrp and (hrp.Position - posGround).Magnitude < auraRange then
+                    local eHrp = v:FindFirstChild("HumanoidRootPart")
+                    if eHrp and (eHrp.Position - posGround).Magnitude < auraRange then
                         task.spawn(function()
-                            netRE:WaitForChild("RE/RegisterHit"):FireServer(v:FindFirstChild("LeftHand") or hrp, {}, "989f0945")
+                            netRE:WaitForChild("RE/RegisterHit"):FireServer(v:FindFirstChild("LeftHand") or eHrp, {}, "989f0945")
                         end)
                     end
                 end
             end
         end
-        -- กดคลิกหน้าจอเฉพาะตอนมีเควสเท่านั้น
         VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
         VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
     end
@@ -791,7 +797,7 @@ registerRight("Settings", function(scroll) end)
                     if p:IsA("BasePart") then p.CanCollide = false end
                 end
 
-                -- ลบเอฟเฟกต์ 100%
+                -- ลบเอฟเฟกต์ 100% ตลอดเวลาที่ฟาร์ม
                 for _, v in pairs(workspace:GetChildren()) do
                     if v.Name == "Fx" or v.Name == "Effect" or v.Name == "Particles" then v:Destroy() end
                 end
@@ -812,7 +818,6 @@ registerRight("Settings", function(scroll) end)
         end
     end)
 
-    -- ลูปโจมตี (ทำงานเฉพาะตอนมีเควส)
     task.spawn(function()
         while true do
             if farmLevelAuto and isQuestActive() then
@@ -822,7 +827,6 @@ registerRight("Settings", function(scroll) end)
         end
     end)
 
-    -- ลูปเคลื่อนที่
     task.spawn(function()
         while true do
             if farmLevelAuto then
@@ -850,7 +854,6 @@ registerRight("Settings", function(scroll) end)
                             hrp.Anchored = true
                         end
                     else
-                        -- ช่วงบินไปรับภารกิจ (ระบบโจมตีจะถูกปิดโดยอัตโนมัติจากเงื่อนไขด้านบน)
                         local distToNPC = (hrp.Position - posNPC).Magnitude
                         if distToNPC > 3 then
                             hrp.Anchored = false
@@ -886,7 +889,7 @@ registerRight("Settings", function(scroll) end)
     local rowStroke = Instance.new("UIStroke", row); rowStroke.Thickness = 2.2; rowStroke.Color = THEME.GREEN; rowStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
     local label = Instance.new("TextLabel", row)
-    label.BackgroundTransparency = 1; label.Size = UDim2.new(1, -160, 1, 0); label.Position = UDim2.new(0, 16, 0, 0); label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Bandit Farm (No Ghost Punch)"
+    label.BackgroundTransparency = 1; label.Size = UDim2.new(1, -160, 1, 0); label.Position = UDim2.new(0, 16, 0, 0); label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Bandit Farm (Strict NPC Stop)"
 
     local sw = Instance.new("Frame", row)
     sw.AnchorPoint = Vector2.new(1, 0.5); sw.Position = UDim2.new(1, -12, 0.5, 0); sw.Size = UDim2.fromOffset(52, 26); sw.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
