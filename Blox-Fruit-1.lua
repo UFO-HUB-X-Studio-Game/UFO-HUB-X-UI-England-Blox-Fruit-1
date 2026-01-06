@@ -754,7 +754,7 @@ registerRight("Home", function(scroll)
         end
     end)
 
-    -- [Loop 2] Aura Attack (เพิ่มกลับมาแล้ว)
+    -- [Loop 2] Aura Attack
     task.spawn(function()
         while true do
             if farmLevelAuto then
@@ -763,14 +763,11 @@ registerRight("Home", function(scroll)
                     pcall(function()
                         local netRE = game:GetService("ReplicatedStorage"):WaitForChild("Modules"):WaitForChild("Net")
                         netRE:WaitForChild("RE/RegisterAttack"):FireServer(0.5)
-                        
-                        -- ระบบ Aura Damage สแกนมอนสเตอร์รอบๆ
                         local enemiesFolder = workspace:FindFirstChild("Enemies")
                         if enemiesFolder then
                             for _, v in ipairs(enemiesFolder:GetChildren()) do
                                 if v.Name == targetName and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
                                     local eHrp = v:FindFirstChild("HumanoidRootPart")
-                                    -- ตรวจสอบว่ามอนอยู่ที่จุดฟาร์มหรือไม่
                                     if eHrp and (eHrp.Position - posGround).Magnitude < auraRange then
                                         task.spawn(function()
                                             netRE:WaitForChild("RE/RegisterHit"):FireServer(v:FindFirstChild("LeftHand") or eHrp, {}, "989f0945")
@@ -779,7 +776,6 @@ registerRight("Home", function(scroll)
                                 end
                             end
                         end
-
                         VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
                         VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
                     end)
@@ -789,7 +785,7 @@ registerRight("Home", function(scroll)
         end
     end)
 
-    -- [Loop 3] Movement
+    -- [Loop 3] Movement (Fixed Vibration & Stuck)
     task.spawn(function()
         while true do
             if farmLevelAuto then
@@ -826,9 +822,16 @@ registerRight("Home", function(scroll)
                     end
                 end)
             else
+                -- **จุดแก้สำคัญ: ปลดล็อคทันทีที่ปิดสวิตช์**
                 pcall(function()
-                    if LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
-                        LP.Character.HumanoidRootPart.Anchored = false
+                    local char = LP.Character
+                    if char and char:FindFirstChild("HumanoidRootPart") then
+                        char.HumanoidRootPart.Anchored = false
+                        if char.HumanoidRootPart:FindFirstChild("UFO_Fly") then char.HumanoidRootPart.UFO_Fly:Destroy() end
+                        if char.HumanoidRootPart:FindFirstChild("UFO_Gyro") then char.HumanoidRootPart.UFO_Gyro:Destroy() end
+                    end
+                    if char and char:FindFirstChild("Humanoid") then
+                        char.Humanoid.PlatformStand = false
                     end
                 end)
             end
@@ -847,7 +850,7 @@ registerRight("Home", function(scroll)
 
     local label = Instance.new("TextLabel", row)
     label.BackgroundTransparency = 1; label.Size = UDim2.new(1, -160, 1, 0); label.Position = UDim2.new(0, 16, 0, 0)
-    label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Bandit Farm + Aura"
+    label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Bandit Farm (Aura + Anti-Stuck)"
 
     local sw = Instance.new("Frame", row)
     sw.AnchorPoint = Vector2.new(1, 0.5); sw.Position = UDim2.new(1, -12, 0.5, 0); sw.Size = UDim2.fromOffset(52, 26); sw.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
@@ -873,25 +876,32 @@ registerRight("Home", function(scroll)
         updateVisual(farmLevelAuto)
         
         if not farmLevelAuto then
-            pcall(function()
-                local char = LP.Character
-                local hrp = char:FindFirstChild("HumanoidRootPart")
-                local hum = char:FindFirstChildOfClass("Humanoid")
-                
-                if hrp then
-                    hrp.Anchored = false
-                    if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly:Destroy() end
-                    if hrp:FindFirstChild("UFO_Gyro") then hrp.UFO_Gyro:Destroy() end
-                end
-                
-                if hum then
-                    hum.PlatformStand = false
-                    hum:ChangeState(Enum.HumanoidStateType.GettingUp)
-                end
+            task.defer(function() -- ใช้ defer เพื่อให้มั่นใจว่ารันหลังจบ Loop
+                pcall(function()
+                    local char = LP.Character
+                    if not char then return end
+                    local hrp = char:FindFirstChild("HumanoidRootPart")
+                    local hum = char:FindFirstChildOfClass("Humanoid")
+                    
+                    if hrp then
+                        hrp.Anchored = false
+                        hrp.Velocity = Vector3.zero
+                        if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly:Destroy() end
+                        if hrp:FindFirstChild("UFO_Gyro") then hrp.UFO_Gyro:Destroy() end
+                    end
+                    
+                    if hum then
+                        hum.PlatformStand = false
+                        hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+                        hum:Move(Vector3.new(0,0,0.1)) -- ขยับนิดเดียวเพื่อให้ฟิสิกส์คืนค่า
+                        task.wait(0.05)
+                        hum:Move(Vector3.new(0,0,0))
+                    end
 
-                for _, p in ipairs(char:GetDescendants()) do
-                    if p:IsA("BasePart") then p.CanCollide = true end
-                end
+                    for _, p in ipairs(char:GetDescendants()) do
+                        if p:IsA("BasePart") then p.CanCollide = true end
+                    end
+                end)
             end)
         end
     end)
