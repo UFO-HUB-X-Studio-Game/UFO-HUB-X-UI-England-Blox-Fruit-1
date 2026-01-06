@@ -700,77 +700,21 @@ registerRight("Home", function(scroll)
     local VirtualInputManager = game:GetService("VirtualInputManager")
     local Lighting = game:GetService("Lighting")
 
-    ------------------------------------------------------------------------
-    -- [1] ระบบ SAVE
-    ------------------------------------------------------------------------
-    local SAVE = getgenv().UFOX_SAVE
-    local SCOPE = ("AA1/FarmSystem/%d"):format(game.PlaceId)
-    local function SaveGet(k, d) local ok, v = pcall(function() return SAVE.get(SCOPE.."/"..k, d) end) return ok and v or d end
-    local function SaveSet(k, v) pcall(function() SAVE.set(SCOPE.."/"..k, v) end) end
+    local function SaveGet(k, d) local SAVE = getgenv().UFOX_SAVE local SCOPE = ("AA1/FarmSystem/%d"):format(game.PlaceId) local ok, v = pcall(function() return SAVE.get(SCOPE.."/"..k, d) end) return ok and v or d end
+    local function SaveSet(k, v) local SAVE = getgenv().UFOX_SAVE local SCOPE = ("AA1/FarmSystem/%d"):format(game.PlaceId) pcall(function() SAVE.set(SCOPE.."/"..k, v) end) end
 
     ------------------------------------------------------------------------
-    -- [2] ตัวแปรตำแหน่ง (Jungle - Monkey Update V3)
+    -- [CORE FUNCTIONS] ระบบโจมตีและจัดการมอนสเตอร์
     ------------------------------------------------------------------------
-    local farmLevelAuto = SaveGet("AutoFarmStateJungle", false)
-    local posNPC = Vector3.new(-1601.473, 36.978, 152.508)
-    local posFarm = Vector3.new(-1688.694, 53.973, -93.090) -- พิกัดตัวละครใหม่
-    local posGround = Vector3.new(-1688.701, 22.892, -93.091) -- พิกัดดึงมอนใหม่
-    local auraRange = 350
-    local targetName = "Monkey"
-
-    local oldBrightness = Lighting.Brightness
-    local oldShadows = Lighting.GlobalShadows
-
-    ------------------------------------------------------------------------
-    -- [3] ฟังก์ชันระบบ
-    ------------------------------------------------------------------------
-    
-    local function isQuestActive()
-        local ok, active = pcall(function() 
-            return LP.PlayerGui.Main.Quest.Visible == true 
-        end)
-        return ok and active
-    end
-
-    local function stopAnimations()
-        local char = LP.Character
-        if char and char:FindFirstChild("Humanoid") then
-            for _, v in pairs(char.Humanoid:GetPlayingAnimationTracks()) do
-                v:Stop()
-            end
-        end
-    end
-
-    local function equipCombat()
-        local char = LP.Character
-        if not char or not farmLevelAuto then return end
-        local combat = LP.Backpack:FindFirstChild("Combat") or char:FindFirstChild("Combat")
-        if combat and combat.Parent ~= char then 
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            if hum then hum:EquipTool(combat) end
-        end
-    end
-
-    local function syncAttackAll()
-        local char = LP.Character
-        if not char or not farmLevelAuto or not isQuestActive() then return end
-        
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        if not hrp then return end
-
-        local distToNPC = (hrp.Position - posNPC).Magnitude
-        if distToNPC < 30 then return end 
-        
-        equipCombat()
-        
+    local function GlobalAttack(targetName, posGround, range)
         local netRE = game:GetService("ReplicatedStorage"):WaitForChild("Modules"):WaitForChild("Net")
-        local enemiesFolder = workspace:FindFirstChild("Enemies")
-        if enemiesFolder then
-            netRE:WaitForChild("RE/RegisterAttack"):FireServer(0.5)
-            for _, v in ipairs(enemiesFolder:GetChildren()) do
+        local enemies = workspace:FindFirstChild("Enemies")
+        if enemies then
+            netRE:WaitForChild("RE/RegisterAttack"):FireServer(0.1)
+            for _, v in ipairs(enemies:GetChildren()) do
                 if v.Name == targetName and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
                     local eHrp = v:FindFirstChild("HumanoidRootPart")
-                    if eHrp and (eHrp.Position - posGround).Magnitude < auraRange then
+                    if eHrp and (eHrp.Position - posGround).Magnitude < range then
                         task.spawn(function()
                             netRE:WaitForChild("RE/RegisterHit"):FireServer(v:FindFirstChild("LeftHand") or eHrp, {}, "989f0945")
                         end)
@@ -782,151 +726,125 @@ registerRight("Home", function(scroll)
         VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
     end
 
-    ------------------------------------------------------------------------
-    -- [4] LOOP การทำงาน
-    ------------------------------------------------------------------------
-    
-    RunService.Stepped:Connect(function()
-        if farmLevelAuto then
-            pcall(function()
-                if LP.PlayerGui.Main.Dialogue.Visible then
-                    LP.PlayerGui.Main.Dialogue.Visible = false
-                end
-            end)
-
-            local char = LP.Character
-            if char then
-                local hrp = char:FindFirstChild("HumanoidRootPart")
-                local questOn = isQuestActive()
-                local distToNPC = hrp and (hrp.Position - posNPC).Magnitude or 999
-
-                for _, p in ipairs(char:GetDescendants()) do
-                    if p:IsA("BasePart") then p.CanCollide = false end
-                    if (distToNPC < 30 or not questOn) and (p:IsA("ParticleEmitter") or p:IsA("Trail")) then
-                        p.Enabled = false
-                    end
-                end
-
-                for _, v in pairs(workspace:GetChildren()) do
-                    if v.Name == "Fx" or v.Name == "Effect" or v.Name == "Particles" then v:Destroy() end
-                end
-
-                if questOn then
-                    if sethiddenproperty then sethiddenproperty(LP, "SimulationRadius", math.huge) end
-                    local enemies = workspace:FindFirstChild("Enemies")
-                    if enemies then
-                        for _, v in ipairs(enemies:GetChildren()) do
-                            if v.Name == targetName and v:FindFirstChild("HumanoidRootPart") then
-                                v.HumanoidRootPart.CanCollide = false
-                                v.HumanoidRootPart.CFrame = CFrame.new(posGround)
-                            end
-                        end
-                    end
-                end
-            end
+    local function SetupMob(v, posGround)
+        local mHrp = v:FindFirstChild("HumanoidRootPart")
+        local mHum = v:FindFirstChild("Humanoid")
+        if mHrp and mHum then
+            mHrp.CanCollide = false
+            mHrp.Size = Vector3.new(60, 60, 60)
+            mHrp.Transparency = 1
+            mHrp.CFrame = CFrame.new(posGround)
+            mHum.WalkSpeed = 0
+            mHum.JumpPower = 0
         end
-    end)
-
-    task.spawn(function()
-        while true do
-            if farmLevelAuto then
-                equipCombat()
-                if isQuestActive() then syncAttackAll() end
-            end
-            task.wait(0.1)
-        end
-    end)
-
-    task.spawn(function()
-        while true do
-            if farmLevelAuto then
-                pcall(function()
-                    local char = LP.Character
-                    local hrp = char:FindFirstChild("HumanoidRootPart")
-                    local hum = char:FindFirstChildOfClass("Humanoid")
-                    if not hrp or not hum then return end
-                    
-                    stopAnimations()
-                    hum.PlatformStand = true
-
-                    local targetPos = isQuestActive() and posFarm or posNPC
-                    local dist = (hrp.Position - targetPos).Magnitude
-                    
-                    if dist > 5 then
-                        hrp.Anchored = false
-                        local bv = hrp:FindFirstChild("UFO_Fly") or Instance.new("BodyVelocity", hrp)
-                        bv.Name = "UFO_Fly"; bv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
-                        bv.Velocity = (targetPos - hrp.Position).Unit * 185
-                        
-                        local bg = hrp:FindFirstChild("UFO_Gyro") or Instance.new("BodyGyro", hrp)
-                        bg.Name = "UFO_Gyro"; bg.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
-                        bg.CFrame = CFrame.new(hrp.Position, targetPos)
-                    else
-                        if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly:Destroy() end
-                        if hrp:FindFirstChild("UFO_Gyro") then hrp.UFO_Gyro:Destroy() end
-                        hrp.Anchored = true
-                        hrp.CFrame = CFrame.new(targetPos)
-                        
-                        if not isQuestActive() then
-                            game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("StartQuest", "JungleQuest", 1)
-                            task.wait(0.5)
-                        end
-                    end
-                end)
-            end
-            task.wait()
-        end
-    end)
-
-    ------------------------------------------------------------------------
-    -- [5] UI & Reset Logic
-    ------------------------------------------------------------------------
-    local THEME = { GREEN = Color3.fromRGB(25, 255, 125), RED = Color3.fromRGB(255, 40, 40), WHITE = Color3.fromRGB(255, 255, 255), BLACK = Color3.fromRGB(0, 0, 0) }
-    for _, child in ipairs(scroll:GetChildren()) do if child.Name == "A_Header_Farm" or child.Name == "A_Row_Jungle" then child:Destroy() end end
-
-    local row = Instance.new("Frame", scroll)
-    row.Name = "A_Row_Jungle"; row.Size = UDim2.new(1, -6, 0, 46); row.BackgroundColor3 = THEME.BLACK; row.LayoutOrder = 3
-    local rowCorner = Instance.new("UICorner", row); rowCorner.CornerRadius = UDim.new(0, 12)
-    local rowStroke = Instance.new("UIStroke", row); rowStroke.Thickness = 2.2; rowStroke.Color = THEME.GREEN; rowStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-
-    local label = Instance.new("TextLabel", row)
-    label.BackgroundTransparency = 1; label.Size = UDim2.new(1, -160, 1, 0); label.Position = UDim2.new(0, 16, 0, 0); label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Monkey Farm (Updated Pos)"
-
-    local sw = Instance.new("Frame", row)
-    sw.AnchorPoint = Vector2.new(1, 0.5); sw.Position = UDim2.new(1, -12, 0.5, 0); sw.Size = UDim2.fromOffset(52, 26); sw.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-    local swCorner = Instance.new("UICorner", sw); swCorner.CornerRadius = UDim.new(0, 13)
-    local swStroke = Instance.new("UIStroke", sw); swStroke.Thickness = 1.8
-
-    local knob = Instance.new("Frame", sw)
-    knob.Size = UDim2.fromOffset(22, 22); knob.BackgroundColor3 = THEME.WHITE; knob.Position = UDim2.new(0, 2, 0.5, -11)
-    local knobCorner = Instance.new("UICorner", knob); knobCorner.CornerRadius = UDim.new(0, 11)
-
-    local function updateVisual(on)
-        swStroke.Color = on and THEME.GREEN or THEME.RED
-        TweenService:Create(knob, TweenInfo.new(0.1), {Position = UDim2.new(on and 1 or 0, on and -24 or 2, 0.5, -11)}):Play()
-        if on then Lighting.Brightness = 0; Lighting.GlobalShadows = false
-        else Lighting.Brightness = oldBrightness; Lighting.GlobalShadows = oldShadows end
     end
 
-    local btn = Instance.new("TextButton", sw)
-    btn.BackgroundTransparency = 1; btn.Size = UDim2.fromScale(1, 1); btn.Text = ""
-    btn.MouseButton1Click:Connect(function()
-        farmLevelAuto = not farmLevelAuto
-        SaveSet("AutoFarmStateJungle", farmLevelAuto)
-        updateVisual(farmLevelAuto)
-        
-        if not farmLevelAuto then
-            pcall(function()
-                local char = LP.Character
-                if char then
-                    local hum = char:FindFirstChildOfClass("Humanoid")
-                    if hum then hum.Health = 0 end
-                end
-            end)
-        end
-    end)
+    ------------------------------------------------------------------------
+    -- [จุดฟาร์มที่ 1] STARTER FARM (Lv. 1 - 10)
+    -- *จุดเริ่มต้นที่คุณต้องการให้เอากลับมา*
+    ------------------------------------------------------------------------
+    local function StartFarm_Starter()
+        local active = SaveGet("AutoFarmStarter", false)
+        local posNPC = Vector3.new(1059.341, 15.449, 1549.356) -- พิกัด NPC เกาะแรก
+        local posFarm = Vector3.new(1045.281, 40.125, 1500.452) -- พิกัดยืนฟาร์ม
+        local posGround = Vector3.new(1045.281, 18.500, 1500.452) -- พิกัดลากมอน
+        local target = "Bandit" -- หรือมอนสเตอร์เริ่มต้นเกาะแรก
 
-    updateVisual(farmLevelAuto)
+        RunService.Stepped:Connect(function()
+            if active then
+                local enemies = workspace:FindFirstChild("Enemies")
+                if enemies then for _, v in pairs(enemies:GetChildren()) do if v.Name == target then SetupMob(v, posGround) end end end
+                for _, v in pairs(workspace:GetChildren()) do if v.Name == "Fx" or v.Name == "Effect" then v:Destroy() end end
+            end
+        end)
+
+        task.spawn(function()
+            while task.wait() do
+                if active then
+                    pcall(function()
+                        local hrp = LP.Character.HumanoidRootPart
+                        local targetPos = LP.PlayerGui.Main.Quest.Visible and posFarm or posNPC
+                        if (hrp.Position - targetPos).Magnitude > 5 then
+                            hrp.Anchored = false
+                            local bv = hrp:FindFirstChild("UFO") or Instance.new("BodyVelocity", hrp); bv.Name = "UFO"; bv.MaxForce = Vector3.new(9e9,9e9,9e9); bv.Velocity = (targetPos - hrp.Position).Unit * 185
+                        else
+                            hrp.Anchored = true; hrp.CFrame = CFrame.new(targetPos)
+                            if not LP.PlayerGui.Main.Quest.Visible then 
+                                game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("StartQuest", "StarterQuest", 1) 
+                            end
+                        end
+                        if LP.PlayerGui.Main.Quest.Visible then GlobalAttack(target, posGround, 300) end
+                    end)
+                end
+            end
+        end)
+        return function(v) active = v end
+    end
+    local updateStarter = StartFarm_Starter()
+
+    ------------------------------------------------------------------------
+    -- [จุดฟาร์มที่ 2] MONKEY FARM (Jungle - พิกัดใหม่ล่าสุด)
+    ------------------------------------------------------------------------
+    local function StartFarm_Monkey()
+        local active = SaveGet("AutoFarmMonkey_V3", false)
+        local posNPC = Vector3.new(-1601.473, 36.978, 152.508)
+        local posFarm = Vector3.new(-1688.694, 53.973, -93.090) -- พิกัดที่คุณให้มาล่าสุด
+        local posGround = Vector3.new(-1688.701, 22.892, -93.091)
+        local target = "Monkey"
+
+        RunService.Stepped:Connect(function()
+            if active then
+                local enemies = workspace:FindFirstChild("Enemies")
+                if enemies then for _, v in pairs(enemies:GetChildren()) do if v.Name == target then SetupMob(v, posGround) end end end
+            end
+        end)
+
+        task.spawn(function()
+            while task.wait() do
+                if active then
+                    pcall(function()
+                        local hrp = LP.Character.HumanoidRootPart
+                        local targetPos = LP.PlayerGui.Main.Quest.Visible and posFarm or posNPC
+                        if (hrp.Position - targetPos).Magnitude > 5 then
+                            hrp.Anchored = false
+                            local bv = hrp:FindFirstChild("UFO") or Instance.new("BodyVelocity", hrp); bv.Name = "UFO"; bv.MaxForce = Vector3.new(9e9,9e9,9e9); bv.Velocity = (targetPos - hrp.Position).Unit * 185
+                        else
+                            hrp.Anchored = true; hrp.CFrame = CFrame.new(targetPos)
+                            if not LP.PlayerGui.Main.Quest.Visible then 
+                                game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("StartQuest", "JungleQuest", 1) 
+                            end
+                        end
+                        if LP.PlayerGui.Main.Quest.Visible then GlobalAttack(target, posGround, 350) end
+                    end)
+                end
+            end
+        end)
+        return function(v) active = v end
+    end
+    local updateMonkey = StartFarm_Monkey()
+
+    ------------------------------------------------------------------------
+    -- [UI] สร้างแถวปุ่มกดแยกตามจุดฟาร์ม
+    ------------------------------------------------------------------------
+    local THEME = { GREEN = Color3.fromRGB(25, 255, 125), RED = Color3.fromRGB(255, 40, 40), BLACK = Color3.fromRGB(0,0,0), WHITE = Color3.fromRGB(255,255,255) }
+    
+    local function CreateRow(name, saveKey, updateFunc)
+        local row = Instance.new("Frame", scroll); row.Size = UDim2.new(1, -6, 0, 46); row.BackgroundColor3 = THEME.BLACK
+        Instance.new("UICorner", row).CornerRadius = UDim.new(0, 12)
+        local st = Instance.new("UIStroke", row); st.Thickness = 2; st.Color = THEME.GREEN
+        local lb = Instance.new("TextLabel", row); lb.Text = name; lb.Size = UDim2.new(1,-160,1,0); lb.Position = UDim2.new(0,16,0,0); lb.TextColor3 = THEME.WHITE; lb.BackgroundTransparency = 1; lb.TextXAlignment = 0; lb.Font = 3
+        local sw = Instance.new("TextButton", row); sw.Size = UDim2.new(0,50,0,24); sw.Position = UDim2.new(1,-60,0.5,-12); sw.Text = ""; sw.BackgroundColor3 = Color3.fromRGB(30,30,30)
+        Instance.new("UICorner", sw).CornerRadius = UDim.new(0,12)
+        
+        local isOn = SaveGet(saveKey, false)
+        local function refresh() sw.BackgroundColor3 = isOn and THEME.GREEN or THEME.RED updateFunc(isOn) end
+        sw.MouseButton1Click:Connect(function() isOn = not isOn SaveSet(saveKey, isOn) refresh() end)
+        refresh()
+    end
+
+    CreateRow("Point 1: Starter Farm (Lv.1-10)", "AutoFarmStarter", updateStarter)
+    CreateRow("Point 2: Monkey Farm (Lv.10+)", "AutoFarmMonkey_V3", updateMonkey)
+
 end)
 -- ===== UFO HUB X • Home – Bomb Finder (Model A V1) =====
 
