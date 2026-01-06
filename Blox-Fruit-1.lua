@@ -720,6 +720,16 @@ registerRight("Home", function(scroll)
         return ok and active
     end
 
+    -- ฟังก์ชันหยุด Animation ทั้งหมด (แก้ตัวค้าง)
+    local function stopAnimations()
+        local char = LP.Character
+        if char and char:FindFirstChild("Humanoid") then
+            for _, v in pairs(char.Humanoid:GetPlayingAnimationTracks()) do
+                v:Stop()
+            end
+        end
+    end
+
     local function equipCombat()
         local char = LP.Character
         if not char or not farmLevelAuto then return end
@@ -796,16 +806,15 @@ registerRight("Home", function(scroll)
                     
                     hum.PlatformStand = true
                     local targetPos = isQuestActive() and posFarm or posNPC
-                    local dist = (hrp.Position - targetPos).Magnitude
                     
-                    if dist > 5 then
+                    if (hrp.Position - targetPos).Magnitude > 5 then
                         hrp.Anchored = false
                         local bv = hrp:FindFirstChild("UFO_Fly") or Instance.new("BodyVelocity", hrp)
-                        bv.Name = "UFO_Fly"; bv.MaxForce = Vector3.new(400000, 400000, 400000)
+                        bv.Name = "UFO_Fly"; bv.MaxForce = Vector3.new(4e5, 4e5, 4e5)
                         bv.Velocity = (targetPos - hrp.Position).Unit * 185
                         
                         local bg = hrp:FindFirstChild("UFO_Gyro") or Instance.new("BodyGyro", hrp)
-                        bg.Name = "UFO_Gyro"; bg.MaxTorque = Vector3.new(400000, 400000, 400000)
+                        bg.Name = "UFO_Gyro"; bg.MaxTorque = Vector3.new(4e5, 4e5, 4e5)
                         bg.CFrame = CFrame.new(hrp.Position, targetPos)
                     else
                         if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly:Destroy() end
@@ -818,6 +827,13 @@ registerRight("Home", function(scroll)
                             game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("StartQuest", "BanditQuest1", 1)
                             task.wait(0.5)
                         end
+                    end
+                end)
+            else
+                -- เมื่อปิดฟาร์ม ต้องมั่นใจว่า Anchored หลุดเสมอ
+                pcall(function()
+                    if LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
+                        LP.Character.HumanoidRootPart.Anchored = false
                     end
                 end)
             end
@@ -836,7 +852,7 @@ registerRight("Home", function(scroll)
 
     local label = Instance.new("TextLabel", row)
     label.BackgroundTransparency = 1; label.Size = UDim2.new(1, -160, 1, 0); label.Position = UDim2.new(0, 16, 0, 0)
-    label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Bandit Farm (Aura & Walk Fix)"
+    label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Bandit Farm (Full Reset Fix)"
 
     local sw = Instance.new("Frame", row)
     sw.AnchorPoint = Vector2.new(1, 0.5); sw.Position = UDim2.new(1, -12, 0.5, 0); sw.Size = UDim2.fromOffset(52, 26); sw.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
@@ -862,26 +878,28 @@ registerRight("Home", function(scroll)
         updateVisual(farmLevelAuto)
         
         if not farmLevelAuto then
+            task.wait(0.1)
             pcall(function()
                 local char = LP.Character
-                local hrp = char:FindFirstChild("HumanoidRootPart")
                 local hum = char:FindFirstChildOfClass("Humanoid")
+                local hrp = char:FindFirstChild("HumanoidRootPart")
                 
+                -- 1. หยุด Animation ทุกอย่างที่ค้างอยู่
+                stopAnimations()
+                
+                -- 2. ถอดอาวุธออกเพื่อรีเซ็ตท่าทาง
+                if hum then hum:UnequipTools() end
+
+                -- 3. ปลดล็อคฟิสิกส์
                 if hrp then
                     hrp.Anchored = false
-                    -- วาร์ปลงพื้นทันทีเพื่อให้เดินได้
-                    hrp.CFrame = CFrame.new(hrp.Position.X, posGround.Y + 3, hrp.Position.Z)
-                    hrp.AssemblyLinearVelocity = Vector3.zero
-                    hrp.AssemblyAngularVelocity = Vector3.zero
                     if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly:Destroy() end
                     if hrp:FindFirstChild("UFO_Gyro") then hrp.UFO_Gyro:Destroy() end
                 end
                 
                 if hum then
                     hum.PlatformStand = false
-                    hum.Sit = false
-                    task.wait(0.1)
-                    hum:ChangeState(Enum.HumanoidStateType.Running) -- บังคับเข้าสถานะวิ่ง
+                    hum.Jump = true
                     hum:ChangeState(Enum.HumanoidStateType.GettingUp)
                 end
 
