@@ -785,7 +785,7 @@ registerRight("Home", function(scroll)
         end
     end)
 
-    -- [Loop 3] Movement (Fixed Vibration & Stuck)
+    -- [Loop 3] Movement (Smooth & Clean Reset)
     task.spawn(function()
         while true do
             if farmLevelAuto then
@@ -821,19 +821,6 @@ registerRight("Home", function(scroll)
                         end
                     end
                 end)
-            else
-                -- **จุดแก้สำคัญ: ปลดล็อคทันทีที่ปิดสวิตช์**
-                pcall(function()
-                    local char = LP.Character
-                    if char and char:FindFirstChild("HumanoidRootPart") then
-                        char.HumanoidRootPart.Anchored = false
-                        if char.HumanoidRootPart:FindFirstChild("UFO_Fly") then char.HumanoidRootPart.UFO_Fly:Destroy() end
-                        if char.HumanoidRootPart:FindFirstChild("UFO_Gyro") then char.HumanoidRootPart.UFO_Gyro:Destroy() end
-                    end
-                    if char and char:FindFirstChild("Humanoid") then
-                        char.Humanoid.PlatformStand = false
-                    end
-                end)
             end
             task.wait()
         end
@@ -850,7 +837,7 @@ registerRight("Home", function(scroll)
 
     local label = Instance.new("TextLabel", row)
     label.BackgroundTransparency = 1; label.Size = UDim2.new(1, -160, 1, 0); label.Position = UDim2.new(0, 16, 0, 0)
-    label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Bandit Farm (Aura + Anti-Stuck)"
+    label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Bandit Farm (Force Reset Walk)"
 
     local sw = Instance.new("Frame", row)
     sw.AnchorPoint = Vector2.new(1, 0.5); sw.Position = UDim2.new(1, -12, 0.5, 0); sw.Size = UDim2.fromOffset(52, 26); sw.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
@@ -876,32 +863,34 @@ registerRight("Home", function(scroll)
         updateVisual(farmLevelAuto)
         
         if not farmLevelAuto then
-            task.defer(function() -- ใช้ defer เพื่อให้มั่นใจว่ารันหลังจบ Loop
-                pcall(function()
-                    local char = LP.Character
-                    if not char then return end
-                    local hrp = char:FindFirstChild("HumanoidRootPart")
-                    local hum = char:FindFirstChildOfClass("Humanoid")
-                    
-                    if hrp then
-                        hrp.Anchored = false
-                        hrp.Velocity = Vector3.zero
-                        if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly:Destroy() end
-                        if hrp:FindFirstChild("UFO_Gyro") then hrp.UFO_Gyro:Destroy() end
-                    end
-                    
-                    if hum then
-                        hum.PlatformStand = false
-                        hum:ChangeState(Enum.HumanoidStateType.GettingUp)
-                        hum:Move(Vector3.new(0,0,0.1)) -- ขยับนิดเดียวเพื่อให้ฟิสิกส์คืนค่า
-                        task.wait(0.05)
-                        hum:Move(Vector3.new(0,0,0))
-                    end
+            -- เมื่อปิด: เคลียร์ทุกอย่างแบบ Force
+            pcall(function()
+                local char = LP.Character
+                if not char then return end
+                local hrp = char:FindFirstChild("HumanoidRootPart")
+                local hum = char:FindFirstChildOfClass("Humanoid")
+                
+                -- 1. ปลดล็อค Anchored และแรงดีด
+                if hrp then
+                    hrp.Anchored = false
+                    hrp.Velocity = Vector3.zero
+                    if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly:Destroy() end
+                    if hrp:FindFirstChild("UFO_Gyro") then hrp.UFO_Gyro:Destroy() end
+                end
+                
+                -- 2. รีเซ็ตสถานะร่างกาย (จุดตายของปัญหา)
+                if hum then
+                    hum.PlatformStand = false
+                    hum.Sit = false -- ป้องกันสถานะนั่งค้าง
+                    hum.Jump = true -- บังคับกระโดดเพื่อรีเซ็ต Physics State
+                    task.wait(0.1)
+                    hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+                end
 
-                    for _, p in ipairs(char:GetDescendants()) do
-                        if p:IsA("BasePart") then p.CanCollide = true end
-                    end
-                end)
+                -- 3. คืนค่าการชนกันของร่างกาย
+                for _, p in ipairs(char:GetDescendants()) do
+                    if p:IsA("BasePart") then p.CanCollide = true end
+                end
             end)
         end
     end)
