@@ -730,7 +730,7 @@ registerRight("Home", function(scroll)
         end
     end
 
-    -- [Loop 1] Noclip & Bring Mobs
+    -- [Loop 1] Noclip & Bring Mobs (ชุดเดิมที่คุณใช้แล้วดี)
     RunService.Stepped:Connect(function()
         if not farmLevelAuto then return end
         local char = LP.Character
@@ -753,10 +753,10 @@ registerRight("Home", function(scroll)
         end
     end)
 
-    -- [Loop 2] Aura Attack (Original)
+    -- [Loop 2] Aura Attack (ชุดเดิมที่คุณใช้แล้วดี)
     task.spawn(function()
         while true do
-            if not farmLevelAuto then task.wait(1) else
+            if farmLevelAuto then
                 equipCombat()
                 if isQuestActive() then
                     pcall(function()
@@ -779,33 +779,33 @@ registerRight("Home", function(scroll)
                         VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
                     end)
                 end
-                task.wait(0.1)
             end
+            task.wait(0.1)
         end
     end)
 
-    -- [Loop 3] Movement (Smooth & Clean Reset)
+    -- [Loop 3] Movement (ชุดเดิมที่คุณใช้แล้วดี)
     task.spawn(function()
         while true do
-            if not farmLevelAuto then 
-                task.wait(0.5) 
-            else
+            if farmLevelAuto then
                 pcall(function()
                     local char = LP.Character
                     local hrp = char:FindFirstChild("HumanoidRootPart")
                     local hum = char:FindFirstChildOfClass("Humanoid")
-                    if not hrp or not hum or hum.Health <= 0 then return end
+                    if not hrp or not hum then return end
                     
                     hum.PlatformStand = true
                     local targetPos = isQuestActive() and posFarm or posNPC
-                    local dist = (hrp.Position - targetPos).Magnitude
                     
-                    if dist > 5 then
+                    if (hrp.Position - targetPos).Magnitude > 5 then
                         hrp.Anchored = false
                         local bv = hrp:FindFirstChild("UFO_Fly") or Instance.new("BodyVelocity", hrp)
-                        bv.Name = "UFO_Fly"; bv.MaxForce = Vector3.new(4e5, 4e5, 4e5); bv.Velocity = (targetPos - hrp.Position).Unit * 185
+                        bv.Name = "UFO_Fly"; bv.MaxForce = Vector3.new(4e5, 4e5, 4e5)
+                        bv.Velocity = (targetPos - hrp.Position).Unit * 185
+                        
                         local bg = hrp:FindFirstChild("UFO_Gyro") or Instance.new("BodyGyro", hrp)
-                        bg.Name = "UFO_Gyro"; bg.MaxTorque = Vector3.new(4e5, 4e5, 4e5); bg.CFrame = CFrame.new(hrp.Position, targetPos)
+                        bg.Name = "UFO_Gyro"; bg.MaxTorque = Vector3.new(4e5, 4e5, 4e5)
+                        bg.CFrame = CFrame.new(hrp.Position, targetPos)
                     else
                         if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly:Destroy() end
                         if hrp:FindFirstChild("UFO_Gyro") then hrp.UFO_Gyro:Destroy() end
@@ -819,8 +819,15 @@ registerRight("Home", function(scroll)
                         end
                     end
                 end)
-                task.wait()
+            else
+                -- เมื่อปิดฟาร์ม ต้องมั่นใจว่า Anchored หลุดเสมอ (Logic เดิม)
+                pcall(function()
+                    if LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
+                        LP.Character.HumanoidRootPart.Anchored = false
+                    end
+                end)
             end
+            task.wait()
         end
     end)
 
@@ -860,12 +867,11 @@ registerRight("Home", function(scroll)
         SaveSet("AutoFarmState", farmLevelAuto)
         updateVisual(farmLevelAuto)
         
+        -- แก้ไข: ถ้ากด "ปิด" ให้ฆ่าตัวตายทันที
         if not farmLevelAuto then
-            -- เมื่อปิด: ฆ่าตัวตายทันทีเพื่อล้างสถานะค้าง 100%
             pcall(function()
-                local char = LP.Character
-                if char and char:FindFirstChildOfClass("Humanoid") then
-                    char:FindFirstChildOfClass("Humanoid").Health = 0
+                if LP.Character and LP.Character:FindFirstChild("Humanoid") then
+                    LP.Character.Humanoid.Health = 0
                 end
             end)
         end
