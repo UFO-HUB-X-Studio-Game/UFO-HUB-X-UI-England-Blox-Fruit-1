@@ -693,105 +693,168 @@ registerRight("Home", function(scroll) end)
 registerRight("Settings", function(scroll) end)
     registerRight("Home", function(scroll)
     local TweenService = game:GetService("TweenService")
+    local RunService = game:GetService("RunService")
     local LP = game:GetService("Players").LocalPlayer
-    local RunS = game:GetService("RunService")
 
-    -- AA1 SAVE SYSTEM
+    ------------------------------------------------------------------------
+    -- [1] ระบบ SAVE AA1 (UFO HUB X Standard)
+    ------------------------------------------------------------------------
     local SAVE = getgenv().UFOX_SAVE
-    local SCOPE = ("AA1/Farm/%d"):format(game.PlaceId)
-    local function SaveGet(k, d) return SAVE.get(SCOPE.."/"..k, d) end
-    local function SaveSet(k, v) SAVE.set(SCOPE.."/"..k, v) end
+    local SCOPE = ("AA1/FarmSystem/%d"):format(game.PlaceId)
 
-    -- THEME
-    local THEME = {
-        GREEN = Color3.fromRGB(25,255,125),
-        RED   = Color3.fromRGB(255,40,40),
-        WHITE = Color3.fromRGB(255,255,255),
-        BLACK = Color3.fromRGB(0,0,0),
-    }
+    local function SaveGet(k, d)
+        local ok, v = pcall(function() return SAVE.get(SCOPE.."/"..k, d) end)
+        return ok and v or d
+    end
+
+    local function SaveSet(k, v)
+        pcall(function() SAVE.set(SCOPE.."/"..k, v) end)
+    end
 
     ------------------------------------------------------------------------
-    -- FARM SETTINGS & LOGIC
+    -- [2] ตัวแปรและตำแหน่ง (Positions)
     ------------------------------------------------------------------------
-    local farmLevelAuto = SaveGet("AutoFarm", false)
-    local posQuest = Vector3.new(1059.757, 16.398, 1549.047) -- จุดรับเควส
-    local posFarm = Vector3.new(1193.877, 44.298, 1614.491)  -- จุดฟาร์มบนฟ้า
+    local farmLevelAuto = SaveGet("AutoFarmState", false)
+    
+    -- จุดรับภารกิจ (นิกร)
+    local posNPC = Vector3.new(1059.757, 16.398, 1549.047)
+    
+    -- จุดฟาร์มบนฟ้า (Windmill Area)
+    local posFarm = Vector3.new(1193.877, 44.298, 1614.491)
 
-    -- ฟังก์ชันรับเควส
-    local function startQuest()
-        local args = {"StartQuest", "BanditQuest1", 1}
+    ------------------------------------------------------------------------
+    -- [3] ฟังก์ชันช่วยเหลือ (Helpers)
+    ------------------------------------------------------------------------
+    
+    -- เช็คเควสว่าเปิดอยู่หรือไม่ (ตรวจสอบลึกถึง Frame)
+    local function isQuestActive()
+        local active = false
+        pcall(function()
+            if LP.PlayerGui.Main.Quest.Visible == true then
+                active = true
+            end
+        end)
+        return active
+    end
+
+    -- ฟังก์ชันรับภารกิจ
+    local function talkToNPC()
+        local args = {
+            [1] = "StartQuest",
+            [2] = "BanditQuest1",
+            [3] = 1
+        }
         game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer(unpack(args))
     end
 
-    -- ฟังก์ชันเช็คสถานะเควส (Visible)
-    local function isQuestActive()
-        pcall(function()
-            return LP.PlayerGui.Main.Quest.Visible
-        end)
-        return false
+    -- ฟังก์ชันบินไปแนวตรง + ค้างบนฟ้า
+    local function flyToLocation(targetPos)
+        local char = LP.Character
+        if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+        local hrp = char.HumanoidRootPart
+
+        local dist = (hrp.Position - targetPos).Magnitude
+        
+        if dist > 5 then
+            -- ขณะบินให้ปิดแรงโน้มถ่วงชั่วคราว
+            if not hrp:FindFirstChild("UFO_Fly") then
+                local bv = Instance.new("BodyVelocity")
+                bv.Name = "UFO_Fly"
+                bv.Velocity = Vector3.new(0,0,0)
+                bv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+                bv.Parent = hrp
+                
+                local bg = Instance.new("BodyGyro")
+                bg.Name = "UFO_Gyro"
+                bg.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+                bg.CFrame = hrp.CFrame
+                bg.Parent = hrp
+            end
+            
+            -- เคลื่อนที่ไปหาเป้าหมาย
+            hrp.CFrame = CFrame.new(hrp.Position, targetPos)
+            hrp.UFO_Fly.Velocity = (targetPos - hrp.Position).Unit * 100 -- ความเร็ว 100
+        else
+            -- เมื่อถึงจุดหมายแล้ว "หยุดนิ่งค้างไว้"
+            hrp.UFO_Fly.Velocity = Vector3.new(0,0,0)
+            hrp.CFrame = CFrame.new(targetPos) -- ล็อคพิกัดเป้าหมายเป๊ะๆ
+        end
     end
 
-    -- ฟังก์ชันบินแนวตรง (นิ่งๆ)
-    local function flyTo(target)
+    -- ฟังก์ชันหยุดบิน
+    local function stopFly()
         local char = LP.Character
         if char and char:FindFirstChild("HumanoidRootPart") then
-            local hrp = char.HumanoidRootPart
-            local distance = (hrp.Position - target).Magnitude
-            
-            if distance > 5 then
-                -- บินไปแนวตรง
-                hrp.CFrame = CFrame.new(hrp.Position, target)
-                local tween = TweenService:Create(hrp, TweenInfo.new(distance/100, Enum.EasingStyle.Linear), {CFrame = CFrame.new(target)})
-                tween:Play()
-                return false -- กำลังไป
-            else
-                -- ถึงแล้ว ล็อคตำแหน่งให้นิ่ง
-                hrp.CFrame = CFrame.new(target)
-                hrp.Velocity = Vector3.new(0, 0, 0)
-                return true -- ถึงแล้ว
+            if char.HumanoidRootPart:FindFirstChild("UFO_Fly") then
+                char.HumanoidRootPart.UFO_Fly:Destroy()
+            end
+            if char.HumanoidRootPart:FindFirstChild("UFO_Gyro") then
+                char.HumanoidRootPart.UFO_Gyro:Destroy()
             end
         end
-        return false
     end
 
-    -- Loop ฟาร์มหลัก
+    ------------------------------------------------------------------------
+    -- [4] LOOP ระบบฟาร์ม (Logic)
+    ------------------------------------------------------------------------
     task.spawn(function()
         while true do
             if farmLevelAuto then
                 pcall(function()
                     local char = LP.Character
-                    local hrp = char:FindFirstChild("HumanoidRootPart")
-                    local Level = LP.Data.Level.Value
+                    if char then
+                        -- ระบบ Noclip (ทะลุแมพตลอดเวลาที่เปิด)
+                        for _, v in ipairs(char:GetDescendants()) do
+                            if v:IsA("BasePart") then v.CanCollide = false end
+                        end
 
-                    -- Noclip (ทะลุแมพ)
-                    for _, part in ipairs(char:GetDescendants()) do
-                        if part:IsA("BasePart") then part.CanCollide = false end
-                    end
-
-                    if Level >= 1 and Level <= 9 then
-                        if not isQuestActive() then
-                            -- ถ้าเควสไม่เปิด (เสร็จแล้วหรือยังไม่รับ) -> ไปรับเควส
-                            local reached = flyTo(posQuest)
-                            if reached then
-                                startQuest()
-                                task.wait(0.5)
+                        local lv = LP.Data.Level.Value
+                        if lv >= 1 and lv <= 9 then
+                            if isQuestActive() then
+                                -- ถ้ามีเควสแล้ว -> ไปจุดฟาร์มบนฟ้าและค้างไว้
+                                flyToLocation(posFarm)
+                            else
+                                -- ถ้าไม่มีเควส -> ไปหา NPC
+                                local distToNPC = (char.HumanoidRootPart.Position - posNPC).Magnitude
+                                if distToNPC > 5 then
+                                    flyToLocation(posNPC)
+                                else
+                                    -- ถึง NPC แล้วหยุดบินเพื่อกดรับเควส
+                                    stopFly()
+                                    talkToNPC()
+                                    task.wait(0.5)
+                                end
                             end
-                        else
-                            -- ถ้าเควสเปิดอยู่ -> ไปค้างที่จุดฟาร์ม
-                            flyTo(posFarm)
                         end
                     end
                 end)
+            else
+                stopFly() -- ถ้าปิดสวิตช์ ให้ตัวละครตกลงมาปกติ
             end
             task.wait()
         end
     end)
 
     ------------------------------------------------------------------------
-    -- UI CONSTRUCTION (ขนาดปกติ 100%)
+    -- [5] การสร้าง UI (Model A V1 - แบบยาว ไม่ตัด)
     ------------------------------------------------------------------------
+    local THEME = {
+        GREEN = Color3.fromRGB(25, 255, 125),
+        RED   = Color3.fromRGB(255, 40, 40),
+        WHITE = Color3.fromRGB(255, 255, 255),
+        BLACK = Color3.fromRGB(0, 0, 0),
+    }
+
+    -- เคลียร์ของเก่าป้องกัน UI ซ้อน
+    for _, child in ipairs(scroll:GetChildren()) do
+        if child.Name == "A_Header_Farm" or child.Name == "A_Row_Farm" then
+            child:Destroy()
+        end
+    end
+
+    -- สร้างหัวข้อ (Header)
     local header = Instance.new("TextLabel")
-    header.Name = "Farm_Header"
+    header.Name = "A_Header_Farm"
     header.BackgroundTransparency = 1
     header.Size = UDim2.new(1, 0, 0, 36)
     header.Font = Enum.Font.GothamBold
@@ -800,44 +863,86 @@ registerRight("Settings", function(scroll) end)
     header.TextXAlignment = Enum.TextXAlignment.Left
     header.Text = "🚜 Farm Level"
     header.LayoutOrder = 1
-    header.Parent = scroll 
+    header.Parent = scroll
 
+    -- สร้างแถวรายการที่ 1 (Farm Level Auto)
     local row = Instance.new("Frame")
-    row.Name = "Farm_Row"
+    row.Name = "A_Row_Farm"
     row.Size = UDim2.new(1, -6, 0, 46)
     row.BackgroundColor3 = THEME.BLACK
     row.LayoutOrder = 2
-    local c1 = Instance.new("UICorner", row); c1.CornerRadius = UDim.new(0, 12)
-    local s1 = Instance.new("UIStroke", row); s1.Thickness = 2.2; s1.Color = THEME.GREEN; s1.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    
+    local rowCorner = Instance.new("UICorner")
+    rowCorner.CornerRadius = UDim.new(0, 12)
+    rowCorner.Parent = row
+    
+    local rowStroke = Instance.new("UIStroke")
+    rowStroke.Thickness = 2.2
+    rowStroke.Color = THEME.GREEN
+    rowStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    rowStroke.Parent = row
 
-    local lab = Instance.new("TextLabel", row)
-    lab.BackgroundTransparency = 1; lab.Size = UDim2.new(1, -160, 1, 0); lab.Position = UDim2.new(0, 16, 0, 0)
-    lab.Font = Enum.Font.GothamBold; lab.TextSize = 13; lab.TextColor3 = THEME.WHITE; lab.Text = "Farm Level Auto"
+    local label = Instance.new("TextLabel")
+    label.Parent = row
+    label.BackgroundTransparency = 1
+    label.Size = UDim2.new(1, -160, 1, 0)
+    label.Position = UDim2.new(0, 16, 0, 0)
+    label.Font = Enum.Font.GothamBold
+    label.TextSize = 13
+    label.TextColor3 = THEME.WHITE
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Text = "Farm Level Auto"
 
-    local sw = Instance.new("Frame", row)
-    sw.AnchorPoint = Vector2.new(1, 0.5); sw.Position = UDim2.new(1, -12, 0.5, 0); sw.Size = UDim2.fromOffset(52, 26); sw.BackgroundColor3 = THEME.BLACK
-    local c2 = Instance.new("UICorner", sw); c2.CornerRadius = UDim.new(0, 13)
-    local swStroke = Instance.new("UIStroke", sw); swStroke.Thickness = 1.8
+    -- ปุ่มสวิตช์ (Switch)
+    local sw = Instance.new("Frame")
+    sw.Name = "SwitchBG"
+    sw.Parent = row
+    sw.AnchorPoint = Vector2.new(1, 0.5)
+    sw.Position = UDim2.new(1, -12, 0.5, 0)
+    sw.Size = UDim2.fromOffset(52, 26)
+    sw.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    
+    local swCorner = Instance.new("UICorner")
+    swCorner.CornerRadius = UDim.new(0, 13)
+    swCorner.Parent = sw
+    
+    local swStroke = Instance.new("UIStroke")
+    swStroke.Thickness = 1.8
+    swStroke.Parent = sw
 
-    local knob = Instance.new("Frame", sw)
-    knob.Size = UDim2.fromOffset(22, 22); knob.BackgroundColor3 = THEME.WHITE; knob.Position = UDim2.new(0, 2, 0.5, -11)
-    local c3 = Instance.new("UICorner", knob); c3.CornerRadius = UDim.new(0, 11)
+    local knob = Instance.new("Frame")
+    knob.Name = "Knob"
+    knob.Parent = sw
+    knob.Size = UDim2.fromOffset(22, 22)
+    knob.BackgroundColor3 = THEME.WHITE
+    knob.Position = UDim2.new(0, 2, 0.5, -11)
+    
+    local knobCorner = Instance.new("UICorner")
+    knobCorner.CornerRadius = UDim.new(0, 11)
+    knobCorner.Parent = knob
 
-    local function update(on)
+    local function updateVisual(on)
         swStroke.Color = on and THEME.GREEN or THEME.RED
-        TweenService:Create(knob, TweenInfo.new(0.08), {Position = UDim2.new(on and 1 or 0, on and -24 or 2, 0.5, -11)}):Play()
+        TweenService:Create(knob, TweenInfo.new(0.1), {
+            Position = UDim2.new(on and 1 or 0, on and -24 or 2, 0.5, -11)
+        }):Play()
     end
 
-    local btn = Instance.new("TextButton", sw)
-    btn.BackgroundTransparency = 1; btn.Size = UDim2.fromScale(1, 1); btn.Text = ""
+    local btn = Instance.new("TextButton")
+    btn.Parent = sw
+    btn.BackgroundTransparency = 1
+    btn.Size = UDim2.fromScale(1, 1)
+    btn.Text = ""
+
     btn.MouseButton1Click:Connect(function()
         farmLevelAuto = not farmLevelAuto
-        SaveSet("AutoFarm", farmLevelAuto)
-        update(farmLevelAuto)
+        SaveSet("AutoFarmState", farmLevelAuto)
+        updateVisual(farmLevelAuto)
     end)
 
-    update(farmLevelAuto)
-    row.Parent = scroll 
+    -- เซตสถานะเริ่มต้น
+    updateVisual(farmLevelAuto)
+    row.Parent = scroll
 end)
 -- ===== UFO HUB X • Home – Bomb Finder (Model A V1) =====
 
