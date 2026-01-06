@@ -726,7 +726,7 @@ registerRight("Settings", function(scroll) end)
     -- [3] ฟังก์ชันช่วยเหลือ (Helpers)
     ------------------------------------------------------------------------
     
-    -- เช็คเควสว่าเปิดอยู่หรือไม่ (ตรวจสอบลึกถึง Frame)
+    -- เช็คเควสว่าเปิดอยู่หรือไม่
     local function isQuestActive()
         local active = false
         pcall(function()
@@ -747,16 +747,20 @@ registerRight("Settings", function(scroll) end)
         game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer(unpack(args))
     end
 
-    -- ฟังก์ชันบินไปแนวตรง + ค้างบนฟ้า
+    -- ฟังก์ชันบินไปแนวตรง + ค้างบนฟ้า + ปิดท่าเดิน
     local function flyToLocation(targetPos)
         local char = LP.Character
-        if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+        if not char or not char:FindFirstChild("HumanoidRootPart") or not char:FindFirstChild("Humanoid") then return end
         local hrp = char.HumanoidRootPart
+        local hum = char.Humanoid
 
         local dist = (hrp.Position - targetPos).Magnitude
         
+        -- ปรับสถานะ Humanoid ไม่ให้ทำท่าเดิน/ตก
+        hum:ChangeState(Enum.HumanoidStateType.Physics)
+
         if dist > 5 then
-            -- ขณะบินให้ปิดแรงโน้มถ่วงชั่วคราว
+            -- ขณะบินให้ล็อคตัวละครให้นิ่ง
             if not hrp:FindFirstChild("UFO_Fly") then
                 local bv = Instance.new("BodyVelocity")
                 bv.Name = "UFO_Fly"
@@ -771,13 +775,15 @@ registerRight("Settings", function(scroll) end)
                 bg.Parent = hrp
             end
             
-            -- เคลื่อนที่ไปหาเป้าหมาย
+            -- เคลื่อนที่ไปหาเป้าหมายตรงๆ
             hrp.CFrame = CFrame.new(hrp.Position, targetPos)
-            hrp.UFO_Fly.Velocity = (targetPos - hrp.Position).Unit * 100 -- ความเร็ว 100
+            hrp.UFO_Fly.Velocity = (targetPos - hrp.Position).Unit * 120 -- เพิ่มความเร็วเป็น 120
         else
             -- เมื่อถึงจุดหมายแล้ว "หยุดนิ่งค้างไว้"
-            hrp.UFO_Fly.Velocity = Vector3.new(0,0,0)
-            hrp.CFrame = CFrame.new(targetPos) -- ล็อคพิกัดเป้าหมายเป๊ะๆ
+            if hrp:FindFirstChild("UFO_Fly") then
+                hrp.UFO_Fly.Velocity = Vector3.new(0,0,0)
+            end
+            hrp.CFrame = CFrame.new(targetPos) 
         end
     end
 
@@ -791,35 +797,46 @@ registerRight("Settings", function(scroll) end)
             if char.HumanoidRootPart:FindFirstChild("UFO_Gyro") then
                 char.HumanoidRootPart.UFO_Gyro:Destroy()
             end
+            if char:FindFirstChild("Humanoid") then
+                char.Humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+            end
         end
     end
 
     ------------------------------------------------------------------------
-    -- [4] LOOP ระบบฟาร์ม (Logic)
+    -- [4] LOOP ระบบฟาร์ม (Logic + Noclip)
     ------------------------------------------------------------------------
+    -- ระบบ Noclip ทะลุทุกอย่าง
+    RunService.Stepped:Connect(function()
+        if farmLevelAuto then
+            local char = LP.Character
+            if char then
+                for _, v in ipairs(char:GetDescendants()) do
+                    if v:IsA("BasePart") then
+                        v.CanCollide = false
+                    end
+                end
+            end
+        end
+    end)
+
     task.spawn(function()
         while true do
             if farmLevelAuto then
                 pcall(function()
                     local char = LP.Character
                     if char then
-                        -- ระบบ Noclip (ทะลุแมพตลอดเวลาที่เปิด)
-                        for _, v in ipairs(char:GetDescendants()) do
-                            if v:IsA("BasePart") then v.CanCollide = false end
-                        end
-
                         local lv = LP.Data.Level.Value
                         if lv >= 1 and lv <= 9 then
                             if isQuestActive() then
-                                -- ถ้ามีเควสแล้ว -> ไปจุดฟาร์มบนฟ้าและค้างไว้
+                                -- รับเควสแล้ว -> บินไปฟาร์มบนฟ้า
                                 flyToLocation(posFarm)
                             else
-                                -- ถ้าไม่มีเควส -> ไปหา NPC
+                                -- ยังไม่มีเควส -> บินไปหานิกร
                                 local distToNPC = (char.HumanoidRootPart.Position - posNPC).Magnitude
                                 if distToNPC > 5 then
                                     flyToLocation(posNPC)
                                 else
-                                    -- ถึง NPC แล้วหยุดบินเพื่อกดรับเควส
                                     stopFly()
                                     talkToNPC()
                                     task.wait(0.5)
@@ -829,7 +846,7 @@ registerRight("Settings", function(scroll) end)
                     end
                 end)
             else
-                stopFly() -- ถ้าปิดสวิตช์ ให้ตัวละครตกลงมาปกติ
+                stopFly()
             end
             task.wait()
         end
@@ -845,14 +862,12 @@ registerRight("Settings", function(scroll) end)
         BLACK = Color3.fromRGB(0, 0, 0),
     }
 
-    -- เคลียร์ของเก่าป้องกัน UI ซ้อน
     for _, child in ipairs(scroll:GetChildren()) do
         if child.Name == "A_Header_Farm" or child.Name == "A_Row_Farm" then
             child:Destroy()
         end
     end
 
-    -- สร้างหัวข้อ (Header)
     local header = Instance.new("TextLabel")
     header.Name = "A_Header_Farm"
     header.BackgroundTransparency = 1
@@ -865,25 +880,21 @@ registerRight("Settings", function(scroll) end)
     header.LayoutOrder = 1
     header.Parent = scroll
 
-    -- สร้างแถวรายการที่ 1 (Farm Level Auto)
     local row = Instance.new("Frame")
     row.Name = "A_Row_Farm"
     row.Size = UDim2.new(1, -6, 0, 46)
     row.BackgroundColor3 = THEME.BLACK
     row.LayoutOrder = 2
     
-    local rowCorner = Instance.new("UICorner")
+    local rowCorner = Instance.new("UICorner", row)
     rowCorner.CornerRadius = UDim.new(0, 12)
-    rowCorner.Parent = row
     
-    local rowStroke = Instance.new("UIStroke")
+    local rowStroke = Instance.new("UIStroke", row)
     rowStroke.Thickness = 2.2
     rowStroke.Color = THEME.GREEN
     rowStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    rowStroke.Parent = row
 
-    local label = Instance.new("TextLabel")
-    label.Parent = row
+    local label = Instance.new("TextLabel", row)
     label.BackgroundTransparency = 1
     label.Size = UDim2.new(1, -160, 1, 0)
     label.Position = UDim2.new(0, 16, 0, 0)
@@ -893,33 +904,27 @@ registerRight("Settings", function(scroll) end)
     label.TextXAlignment = Enum.TextXAlignment.Left
     label.Text = "Farm Level Auto"
 
-    -- ปุ่มสวิตช์ (Switch)
-    local sw = Instance.new("Frame")
+    local sw = Instance.new("Frame", row)
     sw.Name = "SwitchBG"
-    sw.Parent = row
     sw.AnchorPoint = Vector2.new(1, 0.5)
     sw.Position = UDim2.new(1, -12, 0.5, 0)
     sw.Size = UDim2.fromOffset(52, 26)
     sw.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
     
-    local swCorner = Instance.new("UICorner")
+    local swCorner = Instance.new("UICorner", sw)
     swCorner.CornerRadius = UDim.new(0, 13)
-    swCorner.Parent = sw
     
-    local swStroke = Instance.new("UIStroke")
+    local swStroke = Instance.new("UIStroke", sw)
     swStroke.Thickness = 1.8
-    swStroke.Parent = sw
 
-    local knob = Instance.new("Frame")
+    local knob = Instance.new("Frame", sw)
     knob.Name = "Knob"
-    knob.Parent = sw
     knob.Size = UDim2.fromOffset(22, 22)
     knob.BackgroundColor3 = THEME.WHITE
     knob.Position = UDim2.new(0, 2, 0.5, -11)
     
-    local knobCorner = Instance.new("UICorner")
+    local knobCorner = Instance.new("UICorner", knob)
     knobCorner.CornerRadius = UDim.new(0, 11)
-    knobCorner.Parent = knob
 
     local function updateVisual(on)
         swStroke.Color = on and THEME.GREEN or THEME.RED
@@ -928,8 +933,7 @@ registerRight("Settings", function(scroll) end)
         }):Play()
     end
 
-    local btn = Instance.new("TextButton")
-    btn.Parent = sw
+    local btn = Instance.new("TextButton", sw)
     btn.BackgroundTransparency = 1
     btn.Size = UDim2.fromScale(1, 1)
     btn.Text = ""
@@ -940,7 +944,6 @@ registerRight("Settings", function(scroll) end)
         updateVisual(farmLevelAuto)
     end)
 
-    -- เซตสถานะเริ่มต้น
     updateVisual(farmLevelAuto)
     row.Parent = scroll
 end)
