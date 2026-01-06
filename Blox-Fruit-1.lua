@@ -722,7 +722,7 @@ registerRight("Home", function(scroll)
     local oldShadows = Lighting.GlobalShadows
 
     ------------------------------------------------------------------------
-    -- [3] ฟังก์ชันระบบ (ยึดตามตัวที่คุณส่งมา)
+    -- [3] ฟังก์ชันระบบ
     ------------------------------------------------------------------------
     
     local function isQuestActive()
@@ -793,9 +793,10 @@ registerRight("Home", function(scroll)
     end
 
     ------------------------------------------------------------------------
-    -- [4] LOOP การทำงาน (ยึดตามตัวเดิม 100%)
+    -- [4] LOOP การทำงาน
     ------------------------------------------------------------------------
     
+    -- ลูปดึงมอนสเตอร์ (โครงสร้างเดิมที่ฟาร์มดีที่สุด)
     RunService.Stepped:Connect(function()
         if farmLevelAuto then
             pcall(function()
@@ -826,6 +827,7 @@ registerRight("Home", function(scroll)
         end
     end)
 
+    -- ลูปโจมตี + ถือหมัด
     task.spawn(function()
         while true do
             if farmLevelAuto then
@@ -838,48 +840,37 @@ registerRight("Home", function(scroll)
         end
     end)
 
-    -- ### ลูปการเคลื่อนที่ (ปรับปรุงจุดหยุดให้นิ่งสนิท ไม่สั่น) ###
+    -- ลูปการเคลื่อนที่ (แก้ไขจุดหยุดเพื่อแก้สั่น 100%)
     task.spawn(function()
         while true do
             if farmLevelAuto then
                 pcall(function()
                     local char = LP.Character
-                    local hrp = char.HumanoidRootPart
-                    local hum = char.Humanoid
+                    local hrp = char:FindFirstChild("HumanoidRootPart")
+                    local hum = char:FindFirstChild("Humanoid")
+                    if not hrp or not hum then return end
                     
                     stopAnimations()
                     hum.PlatformStand = true
 
-                    if isQuestActive() then
-                        local dist = (hrp.Position - posFarm).Magnitude
-                        if dist > 3 then
-                            hrp.Anchored = false
-                            local fly = hrp:FindFirstChild("UFO_Fly") or Instance.new("BodyVelocity", hrp)
-                            fly.Name = "UFO_Fly"; fly.MaxForce = Vector3.new(9e9, 9e9, 9e9)
-                            fly.Velocity = (posFarm - hrp.Position).Unit * 185
-                            hrp.CFrame = CFrame.new(hrp.Position, posFarm)
-                        else
-                            -- แก้สั่น: หยุดแรงบินและล็อคตำแหน่ง
-                            if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly.Velocity = Vector3.zero end
-                            hrp.CFrame = CFrame.new(posFarm)
-                            hrp.Velocity = Vector3.zero
-                            hrp.Anchored = true
-                        end
+                    local targetPos = isQuestActive() and posFarm or posNPC
+                    local dist = (hrp.Position - targetPos).Magnitude
+
+                    if dist > 3 then
+                        hrp.Anchored = false
+                        local fly = hrp:FindFirstChild("UFO_Fly") or Instance.new("BodyVelocity", hrp)
+                        fly.Name = "UFO_Fly"; fly.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+                        fly.Velocity = (targetPos - hrp.Position).Unit * 185
+                        hrp.CFrame = CFrame.new(hrp.Position, targetPos)
                     else
-                        local distToNPC = (hrp.Position - posNPC).Magnitude
-                        if distToNPC > 3 then
-                            hrp.Anchored = false
-                            local fly = hrp:FindFirstChild("UFO_Fly") or Instance.new("BodyVelocity", hrp)
-                            fly.Name = "UFO_Fly"; fly.MaxForce = Vector3.new(9e9, 9e9, 9e9)
-                            fly.Velocity = (posNPC - hrp.Position).Unit * 185
-                            hrp.CFrame = CFrame.new(hrp.Position, posNPC)
-                        else
-                            -- แก้สั่น: หยุดแรงบินและล็อคตำแหน่ง
-                            if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly.Velocity = Vector3.zero end
-                            hrp.CFrame = CFrame.new(posNPC)
-                            hrp.Velocity = Vector3.zero
-                            hrp.Anchored = true
-                            
+                        -- [[ แก้สั่น: ถึงที่หมายลบแรงส่งทิ้งทันที ]]
+                        if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly:Destroy() end
+                        hrp.Velocity = Vector3.zero
+                        hrp.RotVelocity = Vector3.zero
+                        hrp.CFrame = CFrame.new(targetPos)
+                        hrp.Anchored = true
+                        
+                        if not isQuestActive() then
                             game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("StartQuest", "BanditQuest1", 1)
                             task.wait(0.3)
                         end
@@ -891,7 +882,7 @@ registerRight("Home", function(scroll)
     end)
 
     ------------------------------------------------------------------------
-    -- [5] UI (ตามแบบที่คุณชอบ)
+    -- [5] UI
     ------------------------------------------------------------------------
     local THEME = { GREEN = Color3.fromRGB(25, 255, 125), RED = Color3.fromRGB(255, 40, 40), WHITE = Color3.fromRGB(255, 255, 255), BLACK = Color3.fromRGB(0, 0, 0) }
     for _, child in ipairs(scroll:GetChildren()) do if child.Name == "A_Header_Farm" or child.Name == "A_Row_Farm" then child:Destroy() end end
@@ -902,7 +893,7 @@ registerRight("Home", function(scroll)
     local rowStroke = Instance.new("UIStroke", row); rowStroke.Thickness = 2.2; rowStroke.Color = THEME.GREEN; rowStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
     local label = Instance.new("TextLabel", row)
-    label.BackgroundTransparency = 1; label.Size = UDim2.new(1, -160, 1, 0); label.Position = UDim2.new(0, 16, 0, 0); label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Bandit Farm (Fixed Shake & Auto-Equip)"
+    label.BackgroundTransparency = 1; label.Size = UDim2.new(1, -160, 1, 0); label.Position = UDim2.new(0, 16, 0, 0); label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Bandit Farm (No Shake & Auto Combat)"
 
     local sw = Instance.new("Frame", row)
     sw.AnchorPoint = Vector2.new(1, 0.5); sw.Position = UDim2.new(1, -12, 0.5, 0); sw.Size = UDim2.fromOffset(52, 26); sw.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
