@@ -716,7 +716,7 @@ registerRight("Settings", function(scroll) end)
     ------------------------------------------------------------------------
     local farmLevelAuto = SaveGet("AutoFarmState", false)
     local posNPC = Vector3.new(1059.757, 16.398, 1549.047)
-    local posFarm = Vector3.new(1193.877, 44.298, 1614.491) -- ตำแหน่งบนฟ้า
+    local posFarm = Vector3.new(1193.877, 44.298, 1614.491)
 
     ------------------------------------------------------------------------
     -- [3] ฟังก์ชันช่วยเหลือ
@@ -725,6 +725,7 @@ registerRight("Settings", function(scroll) end)
     local function isQuestActive()
         local active = false
         pcall(function()
+            -- เช็คว่า UI เควสเปิดอยู่หรือไม่
             if LP.PlayerGui.Main.Quest.Visible == true then
                 active = true
             end
@@ -777,10 +778,13 @@ registerRight("Settings", function(scroll) end)
             end
             hrp.CFrame = CFrame.new(hrp.Position, targetPos)
             hrp.UFO_Fly.Velocity = (targetPos - hrp.Position).Unit * 135
+            return false -- ยังบินไม่ถึง
         else
+            -- ถึงแล้ว ล็อคค้างบนฟ้า
             if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly.Velocity = Vector3.new(0,0,0) end
             hrp.CFrame = CFrame.new(targetPos)
             hrp.Anchored = true 
+            return true -- ถึงจุดหมายและลอยตัวแล้ว
         end
     end
 
@@ -788,9 +792,16 @@ registerRight("Settings", function(scroll) end)
     -- [4] ระบบดึงศัตรู (Bring Bandit)
     ------------------------------------------------------------------------
     local function bringEnemies()
-        if not farmLevelAuto then return end
+        -- เงื่อนไข: ต้องเปิดออโต้ฟาร์ม + เควสต้อง Active + ตัวละครต้องลอยค้างอยู่ที่จุดฟาร์มแล้ว
+        if not farmLevelAuto or not isQuestActive() then return end
         
-        -- ปรับ SimulationRadius ให้ดึงมอนได้ไกลขึ้น
+        local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
+        
+        -- เช็คว่าตัวละครอยู่ที่จุดฟาร์ม (ลอยฟ้า) หรือยัง
+        local distToFarm = (hrp.Position - posFarm).Magnitude
+        if distToFarm > 10 then return end -- ถ้ายังไม่ถึงจุดค้างบนฟ้า ไม่ต้องดึง
+
         if sethiddenproperty then
             sethiddenproperty(LP, "SimulationRadius", math.huge)
         end
@@ -798,18 +809,14 @@ registerRight("Settings", function(scroll) end)
         local enemiesFolder = workspace:FindFirstChild("Enemies")
         if enemiesFolder then
             for _, v in ipairs(enemiesFolder:GetChildren()) do
-                -- เช็คชื่อ Bandit (รวมตัวเลเวล 5 และตัวที่เกิดใหม่)
                 if v.Name:find("Bandit") and v:FindFirstChild("HumanoidRootPart") and v:FindFirstChild("Humanoid") then
                     if v.Humanoid.Health > 0 then
-                        -- สถานะมอนสเตอร์: ตัวใหญ่, ใส, ทะลุ, เดินไม่ได้
                         v.HumanoidRootPart.CanCollide = false
                         v.HumanoidRootPart.Size = Vector3.new(60, 60, 60)
                         v.HumanoidRootPart.Transparency = 1
                         v.Humanoid.WalkSpeed = 0
                         v.Humanoid.JumpPower = 0
-                        
-                        -- ดึงมาที่ตำแหน่งใต้เท้า (posFarm ที่เราค้างอยู่บนฟ้า)
-                        -- ปรับตำแหน่งให้อยู่ต่ำกว่าตัวละครเราเล็กน้อย (ประมาณ 5 หน่วย)
+                        -- ดึงมาใต้เท้า (จุดที่ลอยค้างอยู่)
                         v.HumanoidRootPart.CFrame = CFrame.new(posFarm - Vector3.new(0, 5, 0))
                     end
                 end
@@ -828,7 +835,7 @@ registerRight("Settings", function(scroll) end)
                     if v:IsA("BasePart") then v.CanCollide = false end
                 end
             end
-            -- ดึงมอนสเตอร์ทุกเฟรม
+            -- ดึงมอนสเตอร์ (ฟังก์ชันนี้มีเช็คเควสและจุดลอยตัวอยู่ข้างในแล้ว)
             bringEnemies()
         end
     end)
@@ -840,13 +847,15 @@ registerRight("Settings", function(scroll) end)
                     local lv = LP.Data.Level.Value
                     if lv >= 1 and lv <= 9 then
                         if isQuestActive() then
+                            -- บินไปจุดฟาร์มและลอยตัว
                             flyToLocation(posFarm)
                         else
+                            -- ถ้าเควสไม่ว่าง (Visible false) ให้ไปรับภารกิจก่อน
                             local distToNPC = (LP.Character.HumanoidRootPart.Position - posNPC).Magnitude
                             if distToNPC > 5 then
                                 flyToLocation(posNPC)
                             else
-                                resetCharacterStatus() 
+                                resetCharacterStatus() -- คืนค่าตัวละครเพื่อยืนคุยกับ NPC
                                 talkToNPC()
                                 task.wait(1)
                             end
