@@ -719,7 +719,7 @@ registerRight("Settings", function(scroll) end)
     local posFarm = Vector3.new(1193.877, 44.298, 1614.491)
 
     ------------------------------------------------------------------------
-    -- [3] ฟังก์ชันช่วยเหลือ (ปรับปรุงขนานใหญ่)
+    -- [3] ฟังก์ชันช่วยเหลือ (เน้นการทะลุแมพและคืนค่า)
     ------------------------------------------------------------------------
     
     local function isQuestActive()
@@ -733,14 +733,13 @@ registerRight("Settings", function(scroll) end)
     end
 
     local function talkToNPC()
-        -- ใช้ InvokeServer โดยตรงและรอคูลดาวน์เล็กน้อยเพื่อให้รับเควสติด
         task.spawn(function()
             local args = {[1] = "StartQuest", [2] = "BanditQuest1", [3] = 1}
             game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer(unpack(args))
         end)
     end
 
-    -- ฟังก์ชันคืนค่าตัวละคร (แก้ตัวละครนอน/ล้ม/ไร้แรง)
+    -- ฟังก์ชันคืนค่าตัวละคร (ปิด Noclip และกลับมายืนปกติ)
     local function resetCharacterStatus()
         local char = LP.Character
         if char then
@@ -752,17 +751,14 @@ registerRight("Settings", function(scroll) end)
                 if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly:Destroy() end
                 if hrp:FindFirstChild("UFO_Gyro") then hrp.UFO_Gyro:Destroy() end
                 hrp.Velocity = Vector3.new(0, 0, 0)
-                hrp.RotVelocity = Vector3.new(0, 0, 0)
             end
             
             if hum then
-                hum.PlatformStand = false -- แก้ตัวละครนอนล้ม
+                hum.PlatformStand = false
                 hum:ChangeState(Enum.HumanoidStateType.GettingUp)
-                task.wait(0.05)
-                hum:ChangeState(Enum.HumanoidStateType.Running)
             end
 
-            -- คืนค่าการชนกัน (สำคัญมาก: ต้องทำให้ตัวละครยืนบนพื้นได้)
+            -- บังคับคืนค่าการชนกันทันที
             for _, v in ipairs(char:GetDescendants()) do
                 if v:IsA("BasePart") then
                     v.CanCollide = true
@@ -779,7 +775,7 @@ registerRight("Settings", function(scroll) end)
 
         local dist = (hrp.Position - targetPos).Magnitude
         
-        -- ปรับสถานะเพื่อป้องกันท่าเดินแทรกและตัวละครล้ม
+        -- ล็อคท่าทางให้นิ่งขณะบิน
         hum.PlatformStand = true 
 
         if dist > 5 then
@@ -793,13 +789,11 @@ registerRight("Settings", function(scroll) end)
                 bg.Name = "UFO_Gyro"
                 bg.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
                 bg.P = 3000
-                bg.D = 500
             end
             hrp.CFrame = CFrame.new(hrp.Position, targetPos)
             hrp.UFO_Fly.Velocity = (targetPos - hrp.Position).Unit * 135
-            hrp.UFO_Gyro.CFrame = CFrame.new(hrp.Position, targetPos)
         else
-            -- ถึงเป้าหมาย ล็อคเป๊ะๆ
+            -- ล็อคตำแหน่งเมื่อถึงจุดหมาย
             if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly.Velocity = Vector3.new(0,0,0) end
             hrp.CFrame = CFrame.new(targetPos)
             hrp.Anchored = true 
@@ -807,15 +801,15 @@ registerRight("Settings", function(scroll) end)
     end
 
     ------------------------------------------------------------------------
-    -- [4] LOOP ระบบฟาร์ม
+    -- [4] LOOP ระบบฟาร์ม (Noclip 100%)
     ------------------------------------------------------------------------
-    -- ระบบ Noclip แบบปลอดภัย
+    -- ระบบ Noclip ทะลุทุกอย่างรวมถึง Map
     RunService.Stepped:Connect(function()
         if farmLevelAuto then
             local char = LP.Character
             if char then
                 for _, v in ipairs(char:GetDescendants()) do
-                    if v:IsA("BasePart") and v.Name ~= "HumanoidRootPart" then 
+                    if v:IsA("BasePart") then 
                         v.CanCollide = false 
                     end
                 end
@@ -836,10 +830,9 @@ registerRight("Settings", function(scroll) end)
                             if distToNPC > 5 then
                                 flyToLocation(posNPC)
                             else
-                                -- เมื่อถึง NPC: คืนค่า -> รับเควส -> รอ
                                 resetCharacterStatus() 
                                 talkToNPC()
-                                task.wait(1) -- รอยืนยันการรับเควส
+                                task.wait(1)
                             end
                         end
                     end
@@ -850,7 +843,7 @@ registerRight("Settings", function(scroll) end)
     end)
 
     ------------------------------------------------------------------------
-    -- [5] การสร้าง UI (Model A V1 แบบดั้งเดิม ไม่ตัด)
+    -- [5] การสร้าง UI (Model A V1 แบบยาว)
     ------------------------------------------------------------------------
     local THEME = {
         GREEN = Color3.fromRGB(25, 255, 125),
