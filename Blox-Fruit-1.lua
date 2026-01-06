@@ -724,7 +724,6 @@ registerRight("Settings", function(scroll) end)
     ------------------------------------------------------------------------
     
     local function isQuestActive()
-        -- ตรวจสอบว่าหน้าต่าง Quest เปิดอยู่จริงหรือไม่
         local ok, active = pcall(function() 
             return LP.PlayerGui.Main.Quest.Visible == true 
         end)
@@ -740,26 +739,16 @@ registerRight("Settings", function(scroll) end)
         end
     end
 
-    local function equipCombat()
-        local char = LP.Character
-        if not char then return end
-        local combat = char:FindFirstChild("Combat") or LP.Backpack:FindFirstChild("Combat")
-        if combat and combat.Parent ~= char then combat.Parent = char end
-    end
-
     local function syncAttackAll()
         local char = LP.Character
-        -- เงื่อนไข: ต้องเปิดฟาร์มอยู่ และ Quest UI ต้อง Visible เท่านั้นถึงจะตี
         if not char or not farmLevelAuto or not isQuestActive() then return end
         
         local hrp = char:FindFirstChild("HumanoidRootPart")
         if not hrp then return end
 
-        -- ป้องกันการตีใกล้ NPC (พิกัดรับภารกิจ)
         local distToNPC = (hrp.Position - posNPC).Magnitude
-        if distToNPC < 20 then return end 
+        if distToNPC < 25 then return end -- หยุดโจมตีเมื่อใกล้ NPC
         
-        equipCombat()
         local netRE = game:GetService("ReplicatedStorage"):WaitForChild("Modules"):WaitForChild("Net")
         local enemiesFolder = workspace:FindFirstChild("Enemies")
         if enemiesFolder then
@@ -775,40 +764,43 @@ registerRight("Settings", function(scroll) end)
                 end
             end
         end
-        -- คลิกเมาส์อัตโนมัติ (จะรันเฉพาะตอน Quest Visible เท่านั้น)
         VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
         VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
     end
 
-    local function toggleCleanMode(on)
-        if on then
-            Lighting.Brightness = 0
-            Lighting.GlobalShadows = false
-        else
-            Lighting.Brightness = oldBrightness
-            Lighting.GlobalShadows = oldShadows
-        end
-    end
-
     ------------------------------------------------------------------------
-    -- [4] LOOP การทำงาน
+    -- [4] LOOP การทำงาน (Noclip, NPC Stop, Aura Blackout)
     ------------------------------------------------------------------------
     
     RunService.Stepped:Connect(function()
         if farmLevelAuto then
             local char = LP.Character
             if char then
+                local hrp = char:FindFirstChild("HumanoidRootPart")
+                local distToNPC = hrp and (hrp.Position - posNPC).Magnitude or 999
+                local questOn = isQuestActive()
+
+                -- Noclip
                 for _, p in ipairs(char:GetDescendants()) do
                     if p:IsA("BasePart") then p.CanCollide = false end
                 end
 
-                -- ลบเอฟเฟกต์ 100% ตลอดเวลา
+                -- [ฟังก์ชันใหม่] ปิดออร่าการโจมตี/เอฟเฟกต์ตัวละคร 
+                -- เงื่อนไข: ถ้าใกล้ NPC หรือ เควสปิดอยู่ ให้ปิด Particle ให้หมด
+                if distToNPC < 25 or not questOn then
+                    for _, fx in ipairs(char:GetDescendants()) do
+                        if fx:IsA("ParticleEmitter") or fx:IsA("Trail") then
+                            fx.Enabled = false
+                        end
+                    end
+                end
+
+                -- ลบเอฟเฟกต์ใน World (Fx/Particles)
                 for _, v in pairs(workspace:GetChildren()) do
                     if v.Name == "Fx" or v.Name == "Effect" or v.Name == "Particles" then v:Destroy() end
                 end
                 
-                -- ดึงมอนสเตอร์มาหาเฉพาะตอนมีเควส
-                if isQuestActive() then
+                if questOn then
                     if sethiddenproperty then sethiddenproperty(LP, "SimulationRadius", math.huge) end
                     local enemies = workspace:FindFirstChild("Enemies")
                     if enemies then
@@ -824,7 +816,6 @@ registerRight("Settings", function(scroll) end)
         end
     end)
 
-    -- ลูปโจมตี (เช็ค Quest Visible ทุกๆ 0.01 วินาที)
     task.spawn(function()
         while true do
             if farmLevelAuto and isQuestActive() then
@@ -834,7 +825,6 @@ registerRight("Settings", function(scroll) end)
         end
     end)
 
-    -- ลูปเคลื่อนที่ (บิน)
     task.spawn(function()
         while true do
             if farmLevelAuto then
@@ -843,11 +833,10 @@ registerRight("Settings", function(scroll) end)
                     local hrp = char.HumanoidRootPart
                     local hum = char.Humanoid
                     
-                    stopAnimations() -- หยุดท่าวิ่ง
+                    stopAnimations()
                     hum.PlatformStand = true
 
                     if isQuestActive() then
-                        -- มีเควส: บินไปที่จุดฟาร์ม
                         local dist = (hrp.Position - posFarm).Magnitude
                         if dist > 5 then
                             hrp.Anchored = false
@@ -863,7 +852,6 @@ registerRight("Settings", function(scroll) end)
                             hrp.Anchored = true
                         end
                     else
-                        -- ไม่มีเควส (Visible = False): บินไปรับเควส
                         local distToNPC = (hrp.Position - posNPC).Magnitude
                         if distToNPC > 3 then
                             hrp.Anchored = false
@@ -877,7 +865,6 @@ registerRight("Settings", function(scroll) end)
                             if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly.Velocity = Vector3.zero end
                             hrp.Anchored = true
                             hrp.CFrame = CFrame.new(posNPC)
-                            -- รับภารกิจ
                             game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("StartQuest", "BanditQuest1", 1)
                             task.wait(0.5)
                         end
@@ -900,7 +887,7 @@ registerRight("Settings", function(scroll) end)
     local rowStroke = Instance.new("UIStroke", row); rowStroke.Thickness = 2.2; rowStroke.Color = THEME.GREEN; rowStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
     local label = Instance.new("TextLabel", row)
-    label.BackgroundTransparency = 1; label.Size = UDim2.new(1, -160, 1, 0); label.Position = UDim2.new(0, 16, 0, 0); label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Bandit Farm (Quest Visibility Sync)"
+    label.BackgroundTransparency = 1; label.Size = UDim2.new(1, -160, 1, 0); label.Position = UDim2.new(0, 16, 0, 0); label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Bandit Farm (Aura Stealth Mode)"
 
     local sw = Instance.new("Frame", row)
     sw.AnchorPoint = Vector2.new(1, 0.5); sw.Position = UDim2.new(1, -12, 0.5, 0); sw.Size = UDim2.fromOffset(52, 26); sw.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
@@ -914,7 +901,13 @@ registerRight("Settings", function(scroll) end)
     local function updateVisual(on)
         swStroke.Color = on and THEME.GREEN or THEME.RED
         TweenService:Create(knob, TweenInfo.new(0.1), {Position = UDim2.new(on and 1 or 0, on and -24 or 2, 0.5, -11)}):Play()
-        toggleCleanMode(on)
+        if not on then
+            Lighting.Brightness = oldBrightness
+            Lighting.GlobalShadows = oldShadows
+        else
+            Lighting.Brightness = 0
+            Lighting.GlobalShadows = false
+        end
     end
 
     local btn = Instance.new("TextButton", sw)
@@ -933,6 +926,10 @@ registerRight("Settings", function(scroll) end)
                 hrp.Anchored = false
                 char.Humanoid.PlatformStand = false
                 if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly:Destroy() end
+                -- เปิดออร่ากลับคืนเมื่อปิดสคริปต์
+                for _, fx in ipairs(char:GetDescendants()) do
+                    if fx:IsA("ParticleEmitter") or fx:IsA("Trail") then fx.Enabled = true end
+                end
             end)
         end
     end)
