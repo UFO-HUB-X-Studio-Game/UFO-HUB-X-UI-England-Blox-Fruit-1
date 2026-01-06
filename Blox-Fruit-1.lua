@@ -693,84 +693,71 @@ registerRight("Home", function(scroll) end)
 registerRight("Settings", function(scroll) end)
 --===== UFO HUB X • Home Tab - Farm Level (FULL REWORK BY AI) =====
 
-    registerRight("Home", function(scroll)
+    --===== UFO HUB X • Home • Level Farm (Model A V1) =====
+registerRight("Home", function(scroll)
     local TweenService = game:GetService("TweenService")
     local RunService = game:GetService("RunService")
-    local Players = game:GetService("Players")
-    local LP = Players.LocalPlayer
+    local LP = game:GetService("Players").LocalPlayer
     local VirtualInputManager = game:GetService("VirtualInputManager")
     local Lighting = game:GetService("Lighting")
 
     ------------------------------------------------------------------------
-    -- [1] SAVE SYSTEM
+    -- [1] SAVE (AA1)
     ------------------------------------------------------------------------
     local SAVE = getgenv().UFOX_SAVE
     local SCOPE = ("AA1/FarmSystem/%d"):format(game.PlaceId)
     local function SaveGet(k, d)
         local ok, v = pcall(function()
-            return SAVE.get(SCOPE .. "/" .. k, d)
+            return SAVE.get(SCOPE.."/"..k, d)
         end)
         return ok and v or d
     end
     local function SaveSet(k, v)
         pcall(function()
-            SAVE.set(SCOPE .. "/" .. k, v)
+            SAVE.set(SCOPE.."/"..k, v)
         end)
     end
 
     ------------------------------------------------------------------------
-    -- [2] VARIABLES
+    -- [2] CONFIG
     ------------------------------------------------------------------------
     local farmLevelAuto = SaveGet("AutoFarmState", false)
 
-    local posNPC = Vector3.new(1059.757, 16.398, 1549.047)
-    local posFarm = Vector3.new(1193.877, 60.000, 1614.491)
+    local posNPC    = Vector3.new(1059.757, 16.398, 1549.047)
+    local posFarm   = Vector3.new(1193.877, 60.000, 1614.491)
     local posGround = Vector3.new(1193.798, 16.743, 1615.949)
 
     local auraRange = 350
     local targetName = "Bandit"
 
     local oldBrightness = Lighting.Brightness
-    local oldShadows = Lighting.GlobalShadows
+    local oldShadows    = Lighting.GlobalShadows
 
     ------------------------------------------------------------------------
-    -- [3] CHECK LEVEL SYSTEM (LEVEL 1 - 9)
-    ------------------------------------------------------------------------
-    local function getLevel()
-        local ok, level = pcall(function()
-            return LP.Data.Level.Value
-        end)
-        return ok and level or 0
-    end
-
-    local function checkLevel()
-        local lv = getLevel()
-        return lv >= 1 and lv <= 9
-    end
-
-    ------------------------------------------------------------------------
-    -- [4] CORE FUNCTIONS
+    -- [3] SYSTEM
     ------------------------------------------------------------------------
     local function isQuestActive()
-        local ok, active = pcall(function()
+        local ok, v = pcall(function()
             return LP.PlayerGui.Main.Quest.Visible == true
         end)
-        return ok and active
+        return ok and v
     end
 
     local function stopAnimations()
         local char = LP.Character
-        if char and char:FindFirstChild("Humanoid") then
-            for _, v in ipairs(char.Humanoid:GetPlayingAnimationTracks()) do
-                v:Stop()
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if hum then
+            for _, tr in ipairs(hum:GetPlayingAnimationTracks()) do
+                tr:Stop()
             end
         end
     end
 
     local function equipCombat()
-        if not farmLevelAuto or not checkLevel() then return end
+        if not farmLevelAuto then return end
         local char = LP.Character
         if not char then return end
+
         local tool = LP.Backpack:FindFirstChild("Combat") or char:FindFirstChild("Combat")
         if tool and tool.Parent ~= char then
             local hum = char:FindFirstChildOfClass("Humanoid")
@@ -779,45 +766,44 @@ registerRight("Settings", function(scroll) end)
     end
 
     local function syncAttackAll()
-        if not farmLevelAuto or not checkLevel() or not isQuestActive() then return end
+        if not farmLevelAuto or not isQuestActive() then return end
         local char = LP.Character
-        if not char then return end
-
-        local hrp = char:FindFirstChild("HumanoidRootPart")
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
         if not hrp then return end
-
         if (hrp.Position - posNPC).Magnitude < 30 then return end
 
         equipCombat()
 
-        local net = game:GetService("ReplicatedStorage"):WaitForChild("Modules"):WaitForChild("Net")
-        local enemies = workspace:FindFirstChild("Enemies")
+        local net = game:GetService("ReplicatedStorage")
+            :WaitForChild("Modules")
+            :WaitForChild("Net")
 
-        if enemies then
-            net:WaitForChild("RE/RegisterAttack"):FireServer(0.5)
-            for _, v in ipairs(enemies:GetChildren()) do
-                if v.Name == targetName and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
-                    local eHrp = v:FindFirstChild("HumanoidRootPart")
-                    if eHrp and (eHrp.Position - posGround).Magnitude < auraRange then
-                        net:WaitForChild("RE/RegisterHit"):FireServer(
-                            v:FindFirstChild("LeftHand") or eHrp,
-                            {},
-                            "989f0945"
-                        )
-                    end
+        local enemies = workspace:FindFirstChild("Enemies")
+        if not enemies then return end
+
+        net:WaitForChild("RE/RegisterAttack"):FireServer(0.5)
+
+        for _, v in ipairs(enemies:GetChildren()) do
+            if v.Name == targetName
+            and v:FindFirstChild("Humanoid")
+            and v.Humanoid.Health > 0 then
+                local ehrp = v:FindFirstChild("HumanoidRootPart")
+                if ehrp and (ehrp.Position - posGround).Magnitude < auraRange then
+                    net:WaitForChild("RE/RegisterHit")
+                        :FireServer(v:FindFirstChild("LeftHand") or ehrp, {}, "989f0945")
                 end
             end
         end
 
-        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
-        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+        VirtualInputManager:SendMouseButtonEvent(0,0,0,true,game,0)
+        VirtualInputManager:SendMouseButtonEvent(0,0,0,false,game,0)
     end
 
     ------------------------------------------------------------------------
-    -- [5] MAIN LOOP
+    -- [4] LOOPS
     ------------------------------------------------------------------------
     RunService.Stepped:Connect(function()
-        if not farmLevelAuto or not checkLevel() then return end
+        if not farmLevelAuto then return end
 
         pcall(function()
             if LP.PlayerGui.Main.Dialogue.Visible then
@@ -826,19 +812,24 @@ registerRight("Settings", function(scroll) end)
         end)
 
         local char = LP.Character
-        if not char then return end
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if not char or not hrp then return end
+
+        local questOn = isQuestActive()
+        local distNPC = (hrp.Position - posNPC).Magnitude
 
         for _, p in ipairs(char:GetDescendants()) do
-            if p:IsA("BasePart") then
-                p.CanCollide = false
+            if p:IsA("BasePart") then p.CanCollide = false end
+            if (distNPC < 30 or not questOn)
+            and (p:IsA("ParticleEmitter") or p:IsA("Trail")) then
+                p.Enabled = false
             end
         end
 
-        if isQuestActive() then
+        if questOn then
             if sethiddenproperty then
                 sethiddenproperty(LP, "SimulationRadius", math.huge)
             end
-
             local enemies = workspace:FindFirstChild("Enemies")
             if enemies then
                 for _, v in ipairs(enemies:GetChildren()) do
@@ -852,63 +843,160 @@ registerRight("Settings", function(scroll) end)
     end)
 
     task.spawn(function()
-        while task.wait(0.1) do
-            if farmLevelAuto and checkLevel() then
+        while true do
+            if farmLevelAuto and isQuestActive() then
                 equipCombat()
-                if isQuestActive() then
-                    syncAttackAll()
-                end
+                syncAttackAll()
             end
+            task.wait(0.1)
+        end
+    end)
+
+    task.spawn(function()
+        while true do
+            if farmLevelAuto then
+                pcall(function()
+                    local char = LP.Character
+                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                    local hum = char and char:FindFirstChildOfClass("Humanoid")
+                    if not hrp or not hum then return end
+
+                    stopAnimations()
+                    hum.PlatformStand = true
+
+                    local target = isQuestActive() and posFarm or posNPC
+                    if (hrp.Position - target).Magnitude > 5 then
+                        hrp.Anchored = false
+                        local bv = hrp:FindFirstChild("UFO_Fly") or Instance.new("BodyVelocity", hrp)
+                        bv.Name = "UFO_Fly"
+                        bv.MaxForce = Vector3.new(9e9,9e9,9e9)
+                        bv.Velocity = (target - hrp.Position).Unit * 185
+
+                        local bg = hrp:FindFirstChild("UFO_Gyro") or Instance.new("BodyGyro", hrp)
+                        bg.Name = "UFO_Gyro"
+                        bg.MaxTorque = Vector3.new(9e9,9e9,9e9)
+                        bg.CFrame = CFrame.new(hrp.Position, target)
+                    else
+                        if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly:Destroy() end
+                        if hrp:FindFirstChild("UFO_Gyro") then hrp.UFO_Gyro:Destroy() end
+                        hrp.Anchored = true
+                        hrp.CFrame = CFrame.new(target)
+
+                        if not isQuestActive() then
+                            game:GetService("ReplicatedStorage")
+                                .Remotes.CommF_
+                                :InvokeServer("StartQuest","BanditQuest1",1)
+                        end
+                    end
+                end)
+            end
+            task.wait()
         end
     end)
 
     ------------------------------------------------------------------------
-    -- [6] UI (MODEL A V1)
+    -- [5] UI — MODEL A V1
     ------------------------------------------------------------------------
     local THEME = {
         GREEN = Color3.fromRGB(25,255,125),
-        RED = Color3.fromRGB(255,40,40),
+        RED   = Color3.fromRGB(255,40,40),
         WHITE = Color3.fromRGB(255,255,255),
-        BLACK = Color3.fromRGB(0,0,0)
+        BLACK = Color3.fromRGB(0,0,0),
     }
 
-    local row = Instance.new("Frame", scroll)
-    row.Size = UDim2.new(1, -6, 0, 46)
-    row.BackgroundColor3 = THEME.BLACK
-    row.LayoutOrder = 2
-    Instance.new("UICorner", row).CornerRadius = UDim.new(0,12)
+    for _, c in ipairs(scroll:GetChildren()) do
+        if c.Name == "A_Header_LevelFarm" or c.Name == "A_Row_LevelFarm" then
+            c:Destroy()
+        end
+    end
 
-    local stroke = Instance.new("UIStroke", row)
-    stroke.Thickness = 2.2
-    stroke.Color = THEME.GREEN
+    local vlist = scroll:FindFirstChildOfClass("UIListLayout")
+    if not vlist then
+        vlist = Instance.new("UIListLayout", scroll)
+        vlist.Padding = UDim.new(0,12)
+    end
+    scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+
+    local base = 0
+    for _, c in ipairs(scroll:GetChildren()) do
+        if c:IsA("GuiObject") then
+            base = math.max(base, c.LayoutOrder or 0)
+        end
+    end
+
+    local header = Instance.new("TextLabel", scroll)
+    header.Name = "A_Header_LevelFarm"
+    header.BackgroundTransparency = 1
+    header.Size = UDim2.new(1,0,0,36)
+    header.Font = Enum.Font.GothamBold
+    header.TextSize = 16
+    header.TextColor3 = THEME.WHITE
+    header.TextXAlignment = Enum.TextXAlignment.Left
+    header.Text = "Level Farm 🌾"
+    header.LayoutOrder = base + 1
+
+    local row = Instance.new("Frame", scroll)
+    row.Name = "A_Row_LevelFarm"
+    row.Size = UDim2.new(1,-6,0,46)
+    row.BackgroundColor3 = THEME.BLACK
+    row.LayoutOrder = base + 2
+
+    Instance.new("UICorner", row).CornerRadius = UDim.new(0,12)
+    local rs = Instance.new("UIStroke", row)
+    rs.Thickness = 2.2
+    rs.Color = THEME.GREEN
 
     local label = Instance.new("TextLabel", row)
     label.BackgroundTransparency = 1
-    label.Size = UDim2.new(1, -160, 1, 0)
-    label.Position = UDim2.new(0, 16, 0, 0)
+    label.Size = UDim2.new(1,-160,1,0)
+    label.Position = UDim2.new(0,16,0,0)
     label.Font = Enum.Font.GothamBold
     label.TextSize = 13
     label.TextColor3 = THEME.WHITE
-    label.TextXAlignment = Left
+    label.TextXAlignment = Enum.TextXAlignment.Left
     label.Text = "Auto Level Farm"
 
-    local sw = Instance.new("TextButton", row)
-    sw.Size = UDim2.fromOffset(52, 26)
-    sw.Position = UDim2.new(1, -64, 0.5, -13)
-    sw.BackgroundTransparency = 1
-    sw.Text = ""
+    local sw = Instance.new("Frame", row)
+    sw.AnchorPoint = Vector2.new(1,0.5)
+    sw.Position = UDim2.new(1,-12,0.5,0)
+    sw.Size = UDim2.fromOffset(52,26)
+    sw.BackgroundColor3 = THEME.BLACK
+    Instance.new("UICorner", sw).CornerRadius = UDim.new(0,13)
 
-    sw.MouseButton1Click:Connect(function()
+    local sws = Instance.new("UIStroke", sw)
+    sws.Thickness = 1.8
+
+    local knob = Instance.new("Frame", sw)
+    knob.Size = UDim2.fromOffset(22,22)
+    knob.BackgroundColor3 = THEME.WHITE
+    knob.Position = UDim2.new(0,2,0.5,-11)
+    Instance.new("UICorner", knob).CornerRadius = UDim.new(0,11)
+
+    local function update(on)
+        sws.Color = on and THEME.GREEN or THEME.RED
+        TweenService:Create(
+            knob,
+            TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+            {Position = UDim2.new(on and 1 or 0, on and -24 or 2, 0.5, -11)}
+        ):Play()
+    end
+
+    local btn = Instance.new("TextButton", sw)
+    btn.BackgroundTransparency = 1
+    btn.Size = UDim2.fromScale(1,1)
+    btn.Text = ""
+    btn.MouseButton1Click:Connect(function()
         farmLevelAuto = not farmLevelAuto
         SaveSet("AutoFarmState", farmLevelAuto)
+        update(farmLevelAuto)
 
         if not farmLevelAuto then
-            pcall(function()
-                local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
-                if hum then hum.Health = 0 end
-            end)
+            local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+            if hum then hum.Health = 0 end
         end
     end)
+
+    update(farmLevelAuto)
 end)
 -- ===== UFO HUB X • Home – Bomb Finder (Model A V1) =====
 
