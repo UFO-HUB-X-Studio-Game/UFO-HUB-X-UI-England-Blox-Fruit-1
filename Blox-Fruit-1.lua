@@ -709,7 +709,7 @@ registerRight("Home", function(scroll)
     local function SaveSet(k, v) pcall(function() SAVE.set(SCOPE.."/"..k, v) end) end
 
     ------------------------------------------------------------------------
-    -- [2] ตัวแปรตำแหน่ง (ใช้ค่าเดิมของคุณ)
+    -- [2] ตัวแปรตำแหน่ง
     ------------------------------------------------------------------------
     local farmLevelAuto = SaveGet("AutoFarmState", false)
     local posNPC = Vector3.new(1059.757, 16.398, 1549.047)
@@ -722,7 +722,7 @@ registerRight("Home", function(scroll)
     local oldShadows = Lighting.GlobalShadows
 
     ------------------------------------------------------------------------
-    -- [3] ฟังก์ชันระบบ (ใช้ Logic เดิมที่คุณพอใจ)
+    -- [3] ฟังก์ชันระบบ
     ------------------------------------------------------------------------
     
     local function isQuestActive()
@@ -730,6 +730,23 @@ registerRight("Home", function(scroll)
             return LP.PlayerGui.Main.Quest.Visible == true 
         end)
         return ok and active
+    end
+
+    -- ### ฟังก์ชันถือหมัด (แก้ไขใหม่: เน้นเช็คใน Backpack) ###
+    local function equipCombat()
+        pcall(function()
+            local char = LP.Character
+            if not char or not farmLevelAuto then return end
+            
+            -- ถ้าเจอ Combat ใน Backpack แปลว่ายังไม่ได้ถือ
+            local tool = LP.Backpack:FindFirstChild("Combat")
+            if tool then
+                local hum = char:FindFirstChildOfClass("Humanoid")
+                if hum then
+                    hum:EquipTool(tool)
+                end
+            end
+        end)
     end
 
     local function stopAnimations()
@@ -781,7 +798,7 @@ registerRight("Home", function(scroll)
     end
 
     ------------------------------------------------------------------------
-    -- [4] LOOP การทำงาน (ความแรงเดิม 100%)
+    -- [4] LOOP การทำงาน
     ------------------------------------------------------------------------
     
     RunService.Stepped:Connect(function()
@@ -814,17 +831,20 @@ registerRight("Home", function(scroll)
         end
     end)
 
-    -- ลูปโจมตี (ความเร็วเดิม)
+    -- ลูปโจมตี (เช็คถือหมัดตลอดเวลา)
     task.spawn(function()
         while true do
-            if farmLevelAuto and isQuestActive() then
-                syncAttackAll()
+            if farmLevelAuto then
+                equipCombat() -- เช็คและถือทันทีถ้าอยู่ใน Backpack
+                if isQuestActive() then
+                    syncAttackAll()
+                end
             end
-            task.wait(0.01)
+            task.wait(0.1) -- ปรับจังหวะเช็คให้เหมาะสม
         end
     end)
 
-    -- ลูปการเคลื่อนที่ (ปรับลดอาการสั่นตอนรับเควส)
+    -- ลูปการเคลื่อนที่
     task.spawn(function()
         while true do
             if farmLevelAuto then
@@ -837,7 +857,6 @@ registerRight("Home", function(scroll)
                     hum.PlatformStand = true
 
                     if isQuestActive() then
-                        -- ช่วงฟาร์ม
                         local dist = (hrp.Position - posFarm).Magnitude
                         if dist > 5 then
                             hrp.Anchored = false
@@ -851,7 +870,6 @@ registerRight("Home", function(scroll)
                             hrp.Anchored = true
                         end
                     else
-                        -- ช่วงรับเควส (ปรับให้นิ่งขึ้น)
                         local distToNPC = (hrp.Position - posNPC).Magnitude
                         if distToNPC > 3 then
                             hrp.Anchored = false
@@ -860,14 +878,12 @@ registerRight("Home", function(scroll)
                             fly.Velocity = (posNPC - hrp.Position).Unit * 185
                             hrp.CFrame = CFrame.new(hrp.Position, posNPC)
                         else
-                            -- หยุดสั่น: ล็อคพิกัดให้เป๊ะ
                             if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly.Velocity = Vector3.zero end
                             hrp.CFrame = CFrame.new(posNPC)
                             hrp.Anchored = true
                             
-                            -- เรียกรับเควส
                             game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("StartQuest", "BanditQuest1", 1)
-                            task.wait(0.3) -- รอสั้นลงเพื่อความไวแต่ยังนิ่ง
+                            task.wait(0.3)
                         end
                     end
                 end)
@@ -888,7 +904,7 @@ registerRight("Home", function(scroll)
     local rowStroke = Instance.new("UIStroke", row); rowStroke.Thickness = 2.2; rowStroke.Color = THEME.GREEN; rowStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
     local label = Instance.new("TextLabel", row)
-    label.BackgroundTransparency = 1; label.Size = UDim2.new(1, -160, 1, 0); label.Position = UDim2.new(0, 16, 0, 0); label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Bandit Farm (Reset Character Mode)"
+    label.BackgroundTransparency = 1; label.Size = UDim2.new(1, -160, 1, 0); label.Position = UDim2.new(0, 16, 0, 0); label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Bandit Farm (Combat Auto-Equip)"
 
     local sw = Instance.new("Frame", row)
     sw.AnchorPoint = Vector2.new(1, 0.5); sw.Position = UDim2.new(1, -12, 0.5, 0); sw.Size = UDim2.fromOffset(52, 26); sw.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
@@ -912,12 +928,11 @@ registerRight("Home", function(scroll)
         SaveSet("AutoFarmState", farmLevelAuto)
         updateVisual(farmLevelAuto)
         
-        -- ### ปิดสวิตช์ = ฆ่าตัวตาย (Reset) ###
         if not farmLevelAuto then
             pcall(function()
                 local char = LP.Character
                 if char and char:FindFirstChild("Humanoid") then
-                    char.Humanoid.Health = 0
+                    char.Humanoid.Health = 0 -- รีเซ็ตตัวเมื่อปิด
                 end
             end)
         end
