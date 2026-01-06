@@ -694,6 +694,7 @@ registerRight("Settings", function(scroll) end)
     registerRight("Home", function(scroll)
     local TweenService = game:GetService("TweenService")
     local LP = game:GetService("Players").LocalPlayer
+    local RunS = game:GetService("RunService")
 
     -- AA1 SAVE SYSTEM
     local SAVE = getgenv().UFOX_SAVE
@@ -710,71 +711,85 @@ registerRight("Settings", function(scroll) end)
     }
 
     ------------------------------------------------------------------------
-    -- FARM LOGIC (บินไปจุดฟาร์ม + ทะลุแมพ)
+    -- FARM SETTINGS & LOGIC
     ------------------------------------------------------------------------
     local farmLevelAuto = SaveGet("AutoFarm", false)
-    local targetPos = Vector3.new(1059.757, 16.398, 1549.047) -- ตำแหน่งนิกร
+    local posQuest = Vector3.new(1059.757, 16.398, 1549.047) -- จุดรับเควส
+    local posFarm = Vector3.new(1193.877, 44.298, 1614.491)  -- จุดฟาร์มบนฟ้า
 
-    -- ฟังก์ชันบิน (Tween)
-    local function flyTo(pos)
+    -- ฟังก์ชันรับเควส
+    local function startQuest()
+        local args = {"StartQuest", "BanditQuest1", 1}
+        game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer(unpack(args))
+    end
+
+    -- ฟังก์ชันเช็คสถานะเควส (Visible)
+    local function isQuestActive()
+        pcall(function()
+            return LP.PlayerGui.Main.Quest.Visible
+        end)
+        return false
+    end
+
+    -- ฟังก์ชันบินแนวตรง (นิ่งๆ)
+    local function flyTo(target)
         local char = LP.Character
         if char and char:FindFirstChild("HumanoidRootPart") then
             local hrp = char.HumanoidRootPart
-            local distance = (hrp.Position - pos).Magnitude
-            local speed = 100 -- ปรับความเร็วการบินตรงนี้
+            local distance = (hrp.Position - target).Magnitude
             
-            local tweenInfo = TweenInfo.new(distance / speed, Enum.EasingStyle.Linear)
-            local tween = TweenService:Create(hrp, tweenInfo, {CFrame = CFrame.new(pos)})
-            
-            -- เปิด Noclip ขณะบิน
-            local noclipLoop
-            noclipLoop = game:GetService("RunService").Stepped:Connect(function()
-                if tween.PlaybackState == Enum.PlaybackState.Playing then
+            if distance > 5 then
+                -- บินไปแนวตรง
+                hrp.CFrame = CFrame.new(hrp.Position, target)
+                local tween = TweenService:Create(hrp, TweenInfo.new(distance/100, Enum.EasingStyle.Linear), {CFrame = CFrame.new(target)})
+                tween:Play()
+                return false -- กำลังไป
+            else
+                -- ถึงแล้ว ล็อคตำแหน่งให้นิ่ง
+                hrp.CFrame = CFrame.new(target)
+                hrp.Velocity = Vector3.new(0, 0, 0)
+                return true -- ถึงแล้ว
+            end
+        end
+        return false
+    end
+
+    -- Loop ฟาร์มหลัก
+    task.spawn(function()
+        while true do
+            if farmLevelAuto then
+                pcall(function()
+                    local char = LP.Character
+                    local hrp = char:FindFirstChild("HumanoidRootPart")
+                    local Level = LP.Data.Level.Value
+
+                    -- Noclip (ทะลุแมพ)
                     for _, part in ipairs(char:GetDescendants()) do
                         if part:IsA("BasePart") then part.CanCollide = false end
                     end
-                else
-                    noclipLoop:Disconnect()
-                end
-            end)
-            
-            tween:Play()
-        end
-    end
 
-    local function checklevel()
-        pcall(function()
-            local Level = LP.Data.Level.Value
-            print("Current Level: ".. Level)
-            
-            -- เงื่อนไข: ถ้าเลเวล 1 ถึง 9 ให้ไปจุดฟาร์มแรก
-            if Level >= 1 and Level <= 9 then
-                local char = LP.Character
-                if char and char:FindFirstChild("HumanoidRootPart") then
-                    local currentPos = char.HumanoidRootPart.Position
-                    -- ถ้าอยู่ห่างจากจุดหมายเกิน 5 เมตร ให้บินไป
-                    if (currentPos - targetPos).Magnitude > 5 then
-                        flyTo(targetPos)
+                    if Level >= 1 and Level <= 9 then
+                        if not isQuestActive() then
+                            -- ถ้าเควสไม่เปิด (เสร็จแล้วหรือยังไม่รับ) -> ไปรับเควส
+                            local reached = flyTo(posQuest)
+                            if reached then
+                                startQuest()
+                                task.wait(0.5)
+                            end
+                        else
+                            -- ถ้าเควสเปิดอยู่ -> ไปค้างที่จุดฟาร์ม
+                            flyTo(posFarm)
+                        end
                     end
-                end
+                end)
             end
-        end)
-    end
-
-    -- Loop หลัก
-    task.spawn(function()
-        while true do
-            if farmLevelAuto then 
-                checklevel() 
-            end
-            task.wait(1)
+            task.wait()
         end
     end)
 
     ------------------------------------------------------------------------
     -- UI CONSTRUCTION (ขนาดปกติ 100%)
     ------------------------------------------------------------------------
-    -- 1. HEADER: 🚜 Farm Level
     local header = Instance.new("TextLabel")
     header.Name = "Farm_Header"
     header.BackgroundTransparency = 1
@@ -787,57 +802,34 @@ registerRight("Settings", function(scroll) end)
     header.LayoutOrder = 1
     header.Parent = scroll 
 
-    -- 2. ROW: Farm Level Auto
     local row = Instance.new("Frame")
     row.Name = "Farm_Row"
     row.Size = UDim2.new(1, -6, 0, 46)
     row.BackgroundColor3 = THEME.BLACK
     row.LayoutOrder = 2
-    
-    local c1 = Instance.new("UICorner"); c1.CornerRadius = UDim.new(0, 12); c1.Parent = row
-    local s1 = Instance.new("UIStroke"); s1.Thickness = 2.2; s1.Color = THEME.GREEN; s1.ApplyStrokeMode = Enum.ApplyStrokeMode.Border; s1.Parent = row
+    local c1 = Instance.new("UICorner", row); c1.CornerRadius = UDim.new(0, 12)
+    local s1 = Instance.new("UIStroke", row); s1.Thickness = 2.2; s1.Color = THEME.GREEN; s1.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
-    local lab = Instance.new("TextLabel")
-    lab.BackgroundTransparency = 1
-    lab.Size = UDim2.new(1, -160, 1, 0)
-    lab.Position = UDim2.new(0, 16, 0, 0)
-    lab.Font = Enum.Font.GothamBold
-    lab.TextSize = 13
-    lab.TextColor3 = THEME.WHITE
-    lab.TextXAlignment = Enum.TextXAlignment.Left
-    lab.Text = "Farm Level Auto"
-    lab.Parent = row
+    local lab = Instance.new("TextLabel", row)
+    lab.BackgroundTransparency = 1; lab.Size = UDim2.new(1, -160, 1, 0); lab.Position = UDim2.new(0, 16, 0, 0)
+    lab.Font = Enum.Font.GothamBold; lab.TextSize = 13; lab.TextColor3 = THEME.WHITE; lab.Text = "Farm Level Auto"
 
-    -- Switch
-    local sw = Instance.new("Frame")
-    sw.AnchorPoint = Vector2.new(1, 0.5)
-    sw.Position = UDim2.new(1, -12, 0.5, 0)
-    sw.Size = UDim2.fromOffset(52, 26)
-    sw.BackgroundColor3 = THEME.BLACK
-    local c2 = Instance.new("UICorner"); c2.CornerRadius = UDim.new(0, 13); c2.Parent = sw
-    local swStroke = Instance.new("UIStroke"); swStroke.Thickness = 1.8; swStroke.Parent = sw
+    local sw = Instance.new("Frame", row)
+    sw.AnchorPoint = Vector2.new(1, 0.5); sw.Position = UDim2.new(1, -12, 0.5, 0); sw.Size = UDim2.fromOffset(52, 26); sw.BackgroundColor3 = THEME.BLACK
+    local c2 = Instance.new("UICorner", sw); c2.CornerRadius = UDim.new(0, 13)
+    local swStroke = Instance.new("UIStroke", sw); swStroke.Thickness = 1.8
 
-    local knob = Instance.new("Frame")
-    knob.Size = UDim2.fromOffset(22, 22)
-    knob.BackgroundColor3 = THEME.WHITE
-    knob.Position = UDim2.new(0, 2, 0.5, -11)
-    local c3 = Instance.new("UICorner"); c3.CornerRadius = UDim.new(0, 11); c3.Parent = knob
-    knob.Parent = sw
-    sw.Parent = row
+    local knob = Instance.new("Frame", sw)
+    knob.Size = UDim2.fromOffset(22, 22); knob.BackgroundColor3 = THEME.WHITE; knob.Position = UDim2.new(0, 2, 0.5, -11)
+    local c3 = Instance.new("UICorner", knob); c3.CornerRadius = UDim.new(0, 11)
 
     local function update(on)
         swStroke.Color = on and THEME.GREEN or THEME.RED
-        TweenService:Create(knob, TweenInfo.new(0.08), {
-            Position = UDim2.new(on and 1 or 0, on and -24 or 2, 0.5, -11)
-        }):Play()
+        TweenService:Create(knob, TweenInfo.new(0.08), {Position = UDim2.new(on and 1 or 0, on and -24 or 2, 0.5, -11)}):Play()
     end
 
-    local btn = Instance.new("TextButton")
-    btn.BackgroundTransparency = 1
-    btn.Size = UDim2.fromScale(1, 1)
-    btn.Text = ""
-    btn.Parent = sw
-
+    local btn = Instance.new("TextButton", sw)
+    btn.BackgroundTransparency = 1; btn.Size = UDim2.fromScale(1, 1); btn.Text = ""
     btn.MouseButton1Click:Connect(function()
         farmLevelAuto = not farmLevelAuto
         SaveSet("AutoFarm", farmLevelAuto)
