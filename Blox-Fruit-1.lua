@@ -692,7 +692,9 @@ end)
 registerRight("Home", function(scroll) end)
 registerRight("Settings", function(scroll) end)
 --===== UFO HUB X • Home • Level Farm (Anime Style Fix) =====
-registerRight("Home", function(scroll)
+    
+    
+    registerRight("Home", function(scroll)
     local TweenService = game:GetService("TweenService")
     local RunService = game:GetService("RunService")
     local LP = game:GetService("Players").LocalPlayer
