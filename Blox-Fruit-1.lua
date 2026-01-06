@@ -719,7 +719,7 @@ registerRight("Settings", function(scroll) end)
     local posFarm = Vector3.new(1193.877, 44.298, 1614.491)
 
     ------------------------------------------------------------------------
-    -- [3] ฟังก์ชันช่วยเหลือ
+    -- [3] ฟังก์ชันช่วยเหลือ (ปรับปรุงใหม่)
     ------------------------------------------------------------------------
     
     local function isQuestActive()
@@ -737,56 +737,69 @@ registerRight("Settings", function(scroll) end)
         game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer(unpack(args))
     end
 
-    -- ฟังก์ชันบินแบบล็อคเป้า (แก้สั่น)
-    local function moveCharacter(targetPos)
+    -- ฟังก์ชันคืนค่าตัวละครให้กลับเป็นปกติ (ป้องกันตัวละครสั้น/เดินไม่ได้)
+    local function resetCharacterStatus()
         local char = LP.Character
-        if not char or not char:FindFirstChild("HumanoidRootPart") then return end
-        local hrp = char.HumanoidRootPart
-        local hum = char:FindFirstChildOfClass("Humanoid")
-
-        local dist = (hrp.Position - targetPos).Magnitude
-        
-        if dist > 3 then
-            -- ปิดโหมดเดิน (ป้องกันสั่น)
-            if hum then hum:ChangeState(Enum.HumanoidStateType.Physics) end
-            hrp.Anchored = false
+        if char then
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            local hrp = char:FindFirstChild("HumanoidRootPart")
             
-            -- บินไปแนวตรง
-            hrp.CFrame = CFrame.new(hrp.Position, targetPos)
-            
-            local velocity = (targetPos - hrp.Position).Unit * 125
-            if not hrp:FindFirstChild("UFO_Vel") then
-                local bv = Instance.new("BodyVelocity")
-                bv.Name = "UFO_Vel"
-                bv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
-                bv.Parent = hrp
+            -- คืนค่าสถานะการชนกัน
+            for _, v in ipairs(char:GetDescendants()) do
+                if v:IsA("BasePart") then
+                    v.CanCollide = true
+                end
             end
-            hrp.UFO_Vel.Velocity = velocity
-        else
-            -- เมื่อถึงจุดหมาย "ล็อคนิ่ง 100%" ตัดปัญหาสั่น
-            if hrp:FindFirstChild("UFO_Vel") then hrp.UFO_Vel:Destroy() end
-            hrp.Velocity = Vector3.new(0,0,0)
-            hrp.CFrame = CFrame.new(targetPos)
-            hrp.Anchored = true -- ล็อคค้างบนอากาศ
+            
+            if hrp then
+                hrp.Anchored = false
+                if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly:Destroy() end
+                if hrp:FindFirstChild("UFO_Gyro") then hrp.UFO_Gyro:Destroy() end
+                hrp.Velocity = Vector3.new(0,0,0)
+            end
+            
+            if hum then
+                hum:ChangeState(Enum.HumanoidStateType.GettingUp) -- บังคับให้ลุกขึ้นยืน
+            end
         end
     end
 
-    local function stopFarm()
+    local function flyToLocation(targetPos)
         local char = LP.Character
-        if char and char:FindFirstChild("HumanoidRootPart") then
-            char.HumanoidRootPart.Anchored = false
-            if char.HumanoidRootPart:FindFirstChild("UFO_Vel") then
-                char.HumanoidRootPart.UFO_Vel:Destroy()
+        if not char or not char:FindFirstChild("HumanoidRootPart") or not char:FindFirstChild("Humanoid") then return end
+        local hrp = char.HumanoidRootPart
+        local hum = char.Humanoid
+
+        local dist = (hrp.Position - targetPos).Magnitude
+        
+        -- ปิดท่าเดินขณะบิน
+        hum:ChangeState(Enum.HumanoidStateType.Physics)
+
+        if dist > 5 then
+            hrp.Anchored = false
+            if not hrp:FindFirstChild("UFO_Fly") then
+                local bv = Instance.new("BodyVelocity", hrp)
+                bv.Name = "UFO_Fly"
+                bv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+                
+                local bg = Instance.new("BodyGyro", hrp)
+                bg.Name = "UFO_Gyro"
+                bg.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+                bg.CFrame = hrp.CFrame
             end
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            if hum then hum:ChangeState(Enum.HumanoidStateType.GettingUp) end
+            hrp.CFrame = CFrame.new(hrp.Position, targetPos)
+            hrp.UFO_Fly.Velocity = (targetPos - hrp.Position).Unit * 125
+        else
+            -- ถึงแล้วล็อคให้นิ่ง
+            if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly.Velocity = Vector3.new(0,0,0) end
+            hrp.CFrame = CFrame.new(targetPos)
+            hrp.Anchored = true 
         end
     end
 
     ------------------------------------------------------------------------
     -- [4] LOOP ระบบฟาร์ม
     ------------------------------------------------------------------------
-    -- Noclip (ทะลุแมพ)
     RunService.Stepped:Connect(function()
         if farmLevelAuto then
             local char = LP.Character
@@ -805,13 +818,13 @@ registerRight("Settings", function(scroll) end)
                     local lv = LP.Data.Level.Value
                     if lv >= 1 and lv <= 9 then
                         if isQuestActive() then
-                            moveCharacter(posFarm)
+                            flyToLocation(posFarm)
                         else
-                            local distNPC = (LP.Character.HumanoidRootPart.Position - posNPC).Magnitude
-                            if distNPC > 5 then
-                                moveCharacter(posNPC)
+                            local distToNPC = (LP.Character.HumanoidRootPart.Position - posNPC).Magnitude
+                            if distToNPC > 5 then
+                                flyToLocation(posNPC)
                             else
-                                stopFarm() -- หยุดล็อคก่อนคุย
+                                resetCharacterStatus() -- คืนค่าก่อนคุย NPC
                                 talkToNPC()
                                 task.wait(0.5)
                             end
@@ -819,14 +832,15 @@ registerRight("Settings", function(scroll) end)
                     end
                 end)
             else
-                stopFarm()
+                -- ถ้าปิดสวิตช์ ให้รัน Reset ทันทีครั้งเดียว
+                resetCharacterStatus()
             end
             task.wait()
         end
     end)
 
     ------------------------------------------------------------------------
-    -- [5] การสร้าง UI (Model A V1 ยาวๆ)
+    -- [5] การสร้าง UI (Model A V1 แบบยาว)
     ------------------------------------------------------------------------
     local THEME = {
         GREEN = Color3.fromRGB(25, 255, 125),
@@ -835,39 +849,25 @@ registerRight("Settings", function(scroll) end)
         BLACK = Color3.fromRGB(0, 0, 0),
     }
 
-    -- เคลียร์ของเก่า
-    for _, c in ipairs(scroll:GetChildren()) do
-        if c.Name == "A_Header_Farm" or c.Name == "A_Row_Farm" then c:Destroy() end
+    for _, child in ipairs(scroll:GetChildren()) do
+        if child.Name == "A_Header_Farm" or child.Name == "A_Row_Farm" then child:Destroy() end
     end
 
-    -- Header
     local header = Instance.new("TextLabel")
     header.Name = "A_Header_Farm"
-    header.BackgroundTransparency = 1
-    header.Size = UDim2.new(1, 0, 0, 36)
-    header.Font = Enum.Font.GothamBold
-    header.TextSize = 16
-    header.TextColor3 = THEME.WHITE
-    header.TextXAlignment = Enum.TextXAlignment.Left
-    header.Text = "🚜 Farm Level"
-    header.LayoutOrder = 1
-    header.Parent = scroll
+    header.BackgroundTransparency = 1; header.Size = UDim2.new(1, 0, 0, 36)
+    header.Font = Enum.Font.GothamBold; header.TextSize = 16; header.TextColor3 = THEME.WHITE
+    header.TextXAlignment = Enum.TextXAlignment.Left; header.Text = "🚜 Farm Level"; header.LayoutOrder = 1; header.Parent = scroll
 
-    -- Row
     local row = Instance.new("Frame")
-    row.Name = "A_Row_Farm"
-    row.Size = UDim2.new(1, -6, 0, 46)
-    row.BackgroundColor3 = THEME.BLACK
-    row.LayoutOrder = 2
+    row.Name = "A_Row_Farm"; row.Size = UDim2.new(1, -6, 0, 46); row.BackgroundColor3 = THEME.BLACK; row.LayoutOrder = 2
     local rowCorner = Instance.new("UICorner", row); rowCorner.CornerRadius = UDim.new(0, 12)
     local rowStroke = Instance.new("UIStroke", row); rowStroke.Thickness = 2.2; rowStroke.Color = THEME.GREEN; rowStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
     local label = Instance.new("TextLabel", row)
     label.BackgroundTransparency = 1; label.Size = UDim2.new(1, -160, 1, 0); label.Position = UDim2.new(0, 16, 0, 0)
-    label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left
-    label.Text = "Farm Level Auto"
+    label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Farm Level Auto"
 
-    -- Switch
     local sw = Instance.new("Frame", row)
     sw.AnchorPoint = Vector2.new(1, 0.5); sw.Position = UDim2.new(1, -12, 0.5, 0); sw.Size = UDim2.fromOffset(52, 26); sw.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
     local swCorner = Instance.new("UICorner", sw); swCorner.CornerRadius = UDim.new(0, 13)
@@ -888,7 +888,7 @@ registerRight("Settings", function(scroll) end)
         farmLevelAuto = not farmLevelAuto
         SaveSet("AutoFarmState", farmLevelAuto)
         updateVisual(farmLevelAuto)
-        if not farmLevelAuto then stopFarm() end
+        if not farmLevelAuto then resetCharacterStatus() end
     end)
 
     updateVisual(farmLevelAuto)
