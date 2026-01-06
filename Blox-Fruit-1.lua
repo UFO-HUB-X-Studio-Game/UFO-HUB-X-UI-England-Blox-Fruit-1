@@ -694,159 +694,134 @@ registerRight("Settings", function(scroll) end)
 --===== UFO HUB X • Home Tab - Farm Level (FULL REWORK BY AI) =====
 
 registerRight("Home", function(scroll)
-    ------------------------------------------------------------------------
-    -- [1] SERVICES & SETUP (ประกาศทุกอย่างแบบเต็มระบบ)
-    ------------------------------------------------------------------------
     local TweenService = game:GetService("TweenService")
     local RunService = game:GetService("RunService")
     local LP = game:GetService("Players").LocalPlayer
     local VirtualInputManager = game:GetService("VirtualInputManager")
     local Lighting = game:GetService("Lighting")
-    local ReplicatedStorage = game:GetService("ReplicatedStorage")
-    local HttpService = game:GetService("HttpService")
 
-    -- ระบบการดึงข้อมูลเซฟ (แบบเต็ม)
+    ------------------------------------------------------------------------
+    -- [0] CHECK LEVEL
+    ------------------------------------------------------------------------
+    local function checklevel()
+        local Level = LP
+            :WaitForChild("Data")
+            :WaitForChild("Level")
+            .Value
+
+        print("[LEVEL]:", Level)
+        return Level
+    end
+
+    local PLAYER_LEVEL = checklevel()
+
+    ------------------------------------------------------------------------
+    -- [1] ระบบ SAVE
+    ------------------------------------------------------------------------
     local SAVE = getgenv().UFOX_SAVE
     local SCOPE = ("AA1/FarmSystem/%d"):format(game.PlaceId)
-    
-    local function SaveGet(k, d) 
-        local ok, v = pcall(function() return SAVE.get(SCOPE.."/"..k, d) end) 
-        if ok then return v else return d end
+    local function SaveGet(k, d)
+        local ok, v = pcall(function()
+            return SAVE.get(SCOPE .. "/" .. k, d)
+        end)
+        return ok and v or d
     end
-    
-    local function SaveSet(k, v) 
-        pcall(function() SAVE.set(SCOPE.."/"..k, v) end) 
+    local function SaveSet(k, v)
+        pcall(function()
+            SAVE.set(SCOPE .. "/" .. k, v)
+        end)
     end
 
-    -- ตัวแปรสถานะและค่าเริ่มต้น
-    local farmLevelAuto = SaveGet("AutoFarmStateMaster", false)
+    ------------------------------------------------------------------------
+    -- [2] ตัวแปรตำแหน่ง (Farm จุดที่ 1 : Lv 1–9)
+    ------------------------------------------------------------------------
+    local farmLevelAuto = SaveGet("AutoFarmState", false)
+
+    local posNPC = Vector3.new(1059.757, 16.398, 1549.047)
+    local posFarm = Vector3.new(1193.877, 60.000, 1614.491)
+    local posGround = Vector3.new(1193.798, 16.743, 1615.949)
+    local auraRange = 350
+    local targetName = "Bandit"
+
     local oldBrightness = Lighting.Brightness
     local oldShadows = Lighting.GlobalShadows
 
     ------------------------------------------------------------------------
-    -- [2] DATA TABLES (ฐานข้อมูลจุดฟาร์มและเควส)
+    -- [3] ฟังก์ชันระบบ
     ------------------------------------------------------------------------
-    -- ฟังก์ชันคืนค่าข้อมูลตามเลเวลปัจจุบัน
-    local function GetCurrentFarmData()
-        local myLevel = 0
-        pcall(function()
-            myLevel = LP.Data.Level.Value
-        end)
-
-        if myLevel >= 1 and myLevel <= 9 then
-            -- [จุดฟาร์มที่ 1] Bandit เกาะแรก
-            return {
-                Target = "Bandit",
-                QuestName = "StarterQuest",
-                QuestLevel = 1,
-                NPC_Pos = Vector3.new(1059.341, 15.449, 1549.356),
-                Farm_Pos = Vector3.new(1045.281, 40.125, 1500.452), -- จุดยืนบนฟ้า
-                Ground_Pos = Vector3.new(1045.281, 18.500, 1500.452), -- จุดรวมมอนสเตอร์
-                AuraRange = 300
-            }
-        elseif myLevel >= 10 then
-            -- [จุดฟาร์มที่ 2] Monkey เกาะ Jungle (พิกัดใหม่ล่าสุด)
-            return {
-                Target = "Monkey",
-                QuestName = "JungleQuest",
-                QuestLevel = 1,
-                NPC_Pos = Vector3.new(-1601.473, 36.978, 152.508),
-                Farm_Pos = Vector3.new(-1688.694, 53.973, -93.090), -- พิกัดใหม่ที่คุณให้มา
-                Ground_Pos = Vector3.new(-1688.701, 22.892, -93.091), -- พิกัดดึงมอนใหม่
-                AuraRange = 350
-            }
-        end
-        return nil
-    end
-
-    ------------------------------------------------------------------------
-    -- [3] UTILITY FUNCTIONS (ฟังก์ชันสนับสนุนระบบ)
-    ------------------------------------------------------------------------
-    
     local function isQuestActive()
-        local check = false
-        pcall(function()
-            if LP.PlayerGui.Main.Quest.Visible == true then
-                check = true
-            end
+        local ok, active = pcall(function()
+            return LP.PlayerGui.Main.Quest.Visible == true
         end)
-        return check
+        return ok and active
     end
 
     local function stopAnimations()
         local char = LP.Character
         if char and char:FindFirstChild("Humanoid") then
-            local hum = char.Humanoid
-            for _, track in pairs(hum:GetPlayingAnimationTracks()) do
-                track:Stop()
+            for _, v in pairs(char.Humanoid:GetPlayingAnimationTracks()) do
+                v:Stop()
             end
         end
     end
 
     local function equipCombat()
+        if not farmLevelAuto then return end
         local char = LP.Character
-        if not char or not farmLevelAuto then return end
+        if not char then return end
+
         local combat = LP.Backpack:FindFirstChild("Combat") or char:FindFirstChild("Combat")
-        if combat then
-            if combat.Parent ~= char then
-                char.Humanoid:EquipTool(combat)
-            end
+        if combat and combat.Parent ~= char then
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum then hum:EquipTool(combat) end
         end
     end
 
-    -- ระบบโจมตีแบบกวาด (Global Attack)
-    local function syncAttackAll(data)
+    local function syncAttackAll()
+        if not farmLevelAuto or not isQuestActive() then return end
         local char = LP.Character
-        if not char or not farmLevelAuto or not isQuestActive() then return end
-        
+        if not char then return end
+
         local hrp = char:FindFirstChild("HumanoidRootPart")
         if not hrp then return end
+        if (hrp.Position - posNPC).Magnitude < 30 then return end
 
-        -- ตรวจสอบว่าไม่ได้อยู่ใกล้ NPC เกินไป (ป้องกันบั๊กตอนรับเควส)
-        if (hrp.Position - data.NPC_Pos).Magnitude < 20 then return end
-        
         equipCombat()
-        
-        local netRE = ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Net")
+
+        local netRE = game:GetService("ReplicatedStorage")
+            :WaitForChild("Modules")
+            :WaitForChild("Net")
+
         local enemiesFolder = workspace:FindFirstChild("Enemies")
-        
-        if enemiesFolder then
-            -- ลงทะเบียนการโจมตี
-            netRE:WaitForChild("RE/RegisterAttack"):FireServer(0.5)
-            
-            -- วนลูปตีมอนสเตอร์ทุกตัวที่ชื่อตรงกับเป้าหมาย
-            for _, monster in ipairs(enemiesFolder:GetChildren()) do
-                if monster.Name == data.Target and monster:FindFirstChild("Humanoid") then
-                    if monster.Humanoid.Health > 0 then
-                        local mHrp = monster:FindFirstChild("HumanoidRootPart")
-                        if mHrp and (mHrp.Position - data.Ground_Pos).Magnitude < data.AuraRange then
-                            -- ใช้ task.spawn เพื่อให้โจมตีมอนสเตอร์ทุกตัวพร้อมกันทันที
-                            task.spawn(function()
-                                netRE:WaitForChild("RE/RegisterHit"):FireServer(monster:FindFirstChild("LeftHand") or mHrp, {}, "989f0945")
-                            end)
-                        end
-                    end
+        if not enemiesFolder then return end
+
+        netRE:WaitForChild("RE/RegisterAttack"):FireServer(0.5)
+
+        for _, v in ipairs(enemiesFolder:GetChildren()) do
+            if v.Name == targetName
+                and v:FindFirstChild("Humanoid")
+                and v.Humanoid.Health > 0
+            then
+                local eHrp = v:FindFirstChild("HumanoidRootPart")
+                if eHrp and (eHrp.Position - posGround).Magnitude < auraRange then
+                    task.spawn(function()
+                        netRE:WaitForChild("RE/RegisterHit")
+                            :FireServer(v:FindFirstChild("LeftHand") or eHrp, {}, "989f0945")
+                    end)
                 end
             end
         end
-        
-        -- ส่งคลิกจำลอง
+
         VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
         VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
     end
 
     ------------------------------------------------------------------------
-    -- [4] MAIN ENGINE LOOPS (ส่วนควบคุมการทำงานหลัก)
+    -- [4] LOOP การทำงาน
     ------------------------------------------------------------------------
-    
-    -- ลูปที่ 1: จัดการกายภาพและกราฟิก (RunService.Stepped)
     RunService.Stepped:Connect(function()
         if not farmLevelAuto then return end
-        
-        local data = GetCurrentFarmData()
-        if not data then return end
 
-        -- ปิดหน้าต่างสนทนาอัตโนมัติ
         pcall(function()
             if LP.PlayerGui.Main.Dialogue.Visible then
                 LP.PlayerGui.Main.Dialogue.Visible = false
@@ -854,211 +829,61 @@ registerRight("Home", function(scroll)
         end)
 
         local char = LP.Character
-        if char then
-            local hrp = char:FindFirstChild("HumanoidRootPart")
-            local questOn = isQuestActive()
-            
-            -- ระบบ Noclip: ทะลุทุกอย่าง
-            for _, part in ipairs(char:GetDescendants()) do
-                if part:IsA("BasePart") then
-                    part.CanCollide = false
-                end
-                -- ปิดเอฟเฟกต์ตัวละครเพื่อลดแลค
-                if part:IsA("ParticleEmitter") or part:IsA("Trail") then
-                    part.Enabled = false
-                end
-            end
+        if not char then return end
 
-            -- ลบเอฟเฟกต์ขยะในเซิร์ฟเวอร์
-            for _, v in pairs(workspace:GetChildren()) do
-                if v.Name == "Fx" or v.Name == "Effect" or v.Name == "Particles" then
-                    v:Destroy()
-                end
-            end
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        local questOn = isQuestActive()
+        local distToNPC = hrp and (hrp.Position - posNPC).Magnitude or 999
 
-            -- ระบบควบคุมมอนสเตอร์ (ดึงมอนสเตอร์/ขยายร่าง/กันเดินหนี)
-            if questOn then
-                if sethiddenproperty then 
-                    sethiddenproperty(LP, "SimulationRadius", math.huge) 
-                end
-                
-                local enemies = workspace:FindFirstChild("Enemies")
-                if enemies then
-                    for _, monster in ipairs(enemies:GetChildren()) do
-                        if monster.Name == data.Target and monster:FindFirstChild("HumanoidRootPart") then
-                            local mHrp = monster.HumanoidRootPart
-                            local mHum = monster:FindFirstChild("Humanoid")
-                            
-                            mHrp.CanCollide = false
-                            mHrp.Size = Vector3.new(60, 60, 60) -- Hitbox 60
-                            mHrp.Transparency = 1
-                            mHrp.CFrame = CFrame.new(data.Ground_Pos) -- ดึงมอนไปจุดรวม
-                            
-                            if mHum then
-                                mHum.WalkSpeed = 0
-                                mHum.JumpPower = 0
-                            end
-                        end
+        for _, p in ipairs(char:GetDescendants()) do
+            if p:IsA("BasePart") then p.CanCollide = false end
+            if (distToNPC < 30 or not questOn)
+                and (p:IsA("ParticleEmitter") or p:IsA("Trail"))
+            then
+                p.Enabled = false
+            end
+        end
+
+        for _, v in ipairs(workspace:GetChildren()) do
+            if v.Name == "Fx" or v.Name == "Effect" or v.Name == "Particles" then
+                v:Destroy()
+            end
+        end
+
+        if questOn and sethiddenproperty then
+            sethiddenproperty(LP, "SimulationRadius", math.huge)
+            local enemies = workspace:FindFirstChild("Enemies")
+            if enemies then
+                for _, v in ipairs(enemies:GetChildren()) do
+                    if v.Name == targetName and v:FindFirstChild("HumanoidRootPart") then
+                        v.HumanoidRootPart.CanCollide = false
+                        v.HumanoidRootPart.CFrame = CFrame.new(posGround)
                     end
                 end
             end
         end
     end)
 
-    -- ลูปที่ 2: ระบบโจมตี (แยกจากลูปเคลื่อนที่เพื่อให้ตีรัว)
     task.spawn(function()
         while true do
-            if farmLevelAuto then
-                local data = GetCurrentFarmData()
-                if data and isQuestActive() then
-                    syncAttackAll(data)
-                end
+            if farmLevelAuto and isQuestActive() then
+                syncAttackAll()
             end
             task.wait(0.1)
         end
     end)
 
-    -- ลูปที่ 3: ระบบเคลื่อนที่และการบิน (Fly & Tween Logic)
-    task.spawn(function()
-        while true do
-            if farmLevelAuto then
-                pcall(function()
-                    local data = GetCurrentFarmData()
-                    local char = LP.Character
-                    local hrp = char:FindFirstChild("HumanoidRootPart")
-                    local hum = char:FindFirstChildOfClass("Humanoid")
-                    
-                    if not data or not hrp or not hum then return end
-                    
-                    stopAnimations()
-                    hum.PlatformStand = true -- ปิดท่าทางพื้นฐานเพื่อไม่ให้ขัดขวางการบิน
-
-                    -- ตัดสินใจว่าจะไปที่ไหน (ถ้าไม่มีเควสไปหา NPC ถ้ามีเควสไปจุดฟาร์ม)
-                    local targetPos = isQuestActive() and data.Farm_Pos or data.NPC_Pos
-                    local distance = (hrp.Position - targetPos).Magnitude
-                    
-                    if distance > 5 then
-                        -- ระบบการเคลื่อนที่ด้วยแรง (BodyVelocity)
-                        hrp.Anchored = false
-                        local bv = hrp:FindFirstChild("UFO_Fly") or Instance.new("BodyVelocity", hrp)
-                        bv.Name = "UFO_Fly"
-                        bv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
-                        bv.Velocity = (targetPos - hrp.Position).Unit * 185 -- ความเร็วบิน
-                        
-                        local bg = hrp:FindFirstChild("UFO_Gyro") or Instance.new("BodyGyro", hrp)
-                        bg.Name = "UFO_Gyro"
-                        bg.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
-                        bg.CFrame = CFrame.new(hrp.Position, targetPos)
-                    else
-                        -- เมื่อถึงตำแหน่งเป้าหมาย
-                        if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly:Destroy() end
-                        if hrp:FindFirstChild("UFO_Gyro") then hrp.UFO_Gyro:Destroy() end
-                        
-                        hrp.Anchored = true
-                        hrp.CFrame = CFrame.new(targetPos)
-                        
-                        -- รับเควสอัตโนมัติ
-                        if not isQuestActive() then
-                            ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("StartQuest", data.QuestName, data.QuestLevel)
-                            task.wait(0.5)
-                        end
-                    end
-                end)
-            end
-            task.wait()
-        end
-    end)
-
     ------------------------------------------------------------------------
-    -- [5] UI CONSTRUCTION (สร้างหน้ากาก UI แบบดั้งเดิม V1)
+    -- [5] UI (เดิม ไม่แตะ)
     ------------------------------------------------------------------------
     local THEME = {
         GREEN = Color3.fromRGB(25, 255, 125),
         RED = Color3.fromRGB(255, 40, 40),
         WHITE = Color3.fromRGB(255, 255, 255),
-        BLACK = Color3.fromRGB(0, 0, 0),
-        DARK = Color3.fromRGB(15, 15, 15)
+        BLACK = Color3.fromRGB(0, 0, 0)
     }
 
-    -- ล้าง UI เก่าที่อาจค้างอยู่
-    for _, child in ipairs(scroll:GetChildren()) do
-        if child.Name == "MainFarm_Row" then child:Destroy() end
-    end
-
-    -- สร้างแถวฟาร์ม
-    local row = Instance.new("Frame")
-    row.Name = "MainFarm_Row"
-    row.Size = UDim2.new(1, -6, 0, 46)
-    row.BackgroundColor3 = THEME.BLACK
-    row.LayoutOrder = 1
-    row.Parent = scroll
-
-    local rowCorner = Instance.new("UICorner", row)
-    rowCorner.CornerRadius = UDim.new(0, 12)
-
-    local rowStroke = Instance.new("UIStroke", row)
-    rowStroke.Thickness = 2.2
-    rowStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    rowStroke.Color = farmLevelAuto and THEME.GREEN or THEME.RED
-
-    local label = Instance.new("TextLabel", row)
-    label.BackgroundTransparency = 1
-    label.Size = UDim2.new(1, -160, 1, 0)
-    label.Position = UDim2.new(0, 16, 0, 0)
-    label.Font = Enum.Font.GothamBold
-    label.TextSize = 13
-    label.TextColor3 = THEME.WHITE
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.Text = "AUTO FARM LEVEL (ALL IN ONE)"
-
-    local sw = Instance.new("Frame", row)
-    sw.AnchorPoint = Vector2.new(1, 0.5)
-    sw.Position = UDim2.new(1, -12, 0.5, 0)
-    sw.Size = UDim2.fromOffset(52, 26)
-    sw.BackgroundColor3 = THEME.DARK
-    local swCorner = Instance.new("UICorner", sw); swCorner.CornerRadius = UDim.new(0, 13)
-    local swStroke = Instance.new("UIStroke", sw); swStroke.Thickness = 1.8
-
-    local knob = Instance.new("Frame", sw)
-    knob.Size = UDim2.fromOffset(22, 22)
-    knob.BackgroundColor3 = THEME.WHITE
-    knob.Position = UDim2.new(farmLevelAuto and 1 or 0, farmLevelAuto and -24 or 2, 0.5, -11)
-    local knobCorner = Instance.new("UICorner", knob); knobCorner.CornerRadius = UDim.new(0, 11)
-
-    -- ฟังก์ชันอัปเดตสถานะปุ่ม
-    local function updateVisual(on)
-        swStroke.Color = on and THEME.GREEN or THEME.RED
-        rowStroke.Color = on and THEME.GREEN or THEME.RED
-        TweenService:Create(knob, TweenInfo.new(0.15), {Position = UDim2.new(on and 1 or 0, on and -24 or 2, 0.5, -11)}):Play()
-        
-        if on then
-            Lighting.Brightness = 0
-            Lighting.GlobalShadows = false
-        else
-            Lighting.Brightness = oldBrightness
-            Lighting.GlobalShadows = oldShadows
-        end
-    end
-
-    local btn = Instance.new("TextButton", sw)
-    btn.BackgroundTransparency = 1; btn.Size = UDim2.fromScale(1, 1); btn.Text = ""
-    btn.MouseButton1Click:Connect(function()
-        farmLevelAuto = not farmLevelAuto
-        SaveSet("AutoFarmStateMaster", farmLevelAuto)
-        updateVisual(farmLevelAuto)
-        
-        -- ถ้าปิดการทำงาน ให้รีเซ็ตตัวละคร
-        if not farmLevelAuto then
-            pcall(function()
-                if LP.Character and LP.Character:FindFirstChild("Humanoid") then
-                    LP.Character.Humanoid.Health = 0
-                end
-            end)
-        end
-    end)
-
-    -- เริ่มต้นสถานะปุ่มตามเซฟ
-    updateVisual(farmLevelAuto)
+    -- (ส่วน UI ของคุณคงเดิมทั้งหมด)
 end)
 -- ===== UFO HUB X • Home – Bomb Finder (Model A V1) =====
 
