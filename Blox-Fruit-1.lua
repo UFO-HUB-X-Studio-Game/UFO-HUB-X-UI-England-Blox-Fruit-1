@@ -690,8 +690,7 @@ registerRight("Home", function(scroll)
 end)
 
 registerRight("Home", function(scroll) end)
-registerRight("Settings", function(scroll) end)
-    registerRight("Home", function(scroll)
+registerRight("Home", function(scroll)
     local TweenService = game:GetService("TweenService")
     local RunService = game:GetService("RunService")
     local LP = game:GetService("Players").LocalPlayer
@@ -747,7 +746,7 @@ registerRight("Settings", function(scroll) end)
         if not hrp then return end
 
         local distToNPC = (hrp.Position - posNPC).Magnitude
-        if distToNPC < 25 then return end -- หยุดโจมตีเมื่อใกล้ NPC
+        if distToNPC < 20 then return end 
         
         local netRE = game:GetService("ReplicatedStorage"):WaitForChild("Modules"):WaitForChild("Net")
         local enemiesFolder = workspace:FindFirstChild("Enemies")
@@ -768,39 +767,40 @@ registerRight("Settings", function(scroll) end)
         VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
     end
 
+    local function toggleCleanMode(on)
+        if on then
+            Lighting.Brightness = 0
+            Lighting.GlobalShadows = false
+        else
+            Lighting.Brightness = oldBrightness
+            Lighting.GlobalShadows = oldShadows
+        end
+    end
+
     ------------------------------------------------------------------------
-    -- [4] LOOP การทำงาน (Noclip, NPC Stop, Aura Blackout)
+    -- [4] LOOP การทำงาน
     ------------------------------------------------------------------------
     
     RunService.Stepped:Connect(function()
         if farmLevelAuto then
+            -- ### [เพิ่มใหม่] ปิด Dialogue อัตโนมัติ ###
+            pcall(function()
+                if LP.PlayerGui.Main.Dialogue.Visible then
+                    LP.PlayerGui.Main.Dialogue.Visible = false
+                end
+            end)
+
             local char = LP.Character
             if char then
-                local hrp = char:FindFirstChild("HumanoidRootPart")
-                local distToNPC = hrp and (hrp.Position - posNPC).Magnitude or 999
-                local questOn = isQuestActive()
-
-                -- Noclip
                 for _, p in ipairs(char:GetDescendants()) do
                     if p:IsA("BasePart") then p.CanCollide = false end
                 end
 
-                -- [ฟังก์ชันใหม่] ปิดออร่าการโจมตี/เอฟเฟกต์ตัวละคร 
-                -- เงื่อนไข: ถ้าใกล้ NPC หรือ เควสปิดอยู่ ให้ปิด Particle ให้หมด
-                if distToNPC < 25 or not questOn then
-                    for _, fx in ipairs(char:GetDescendants()) do
-                        if fx:IsA("ParticleEmitter") or fx:IsA("Trail") then
-                            fx.Enabled = false
-                        end
-                    end
-                end
-
-                -- ลบเอฟเฟกต์ใน World (Fx/Particles)
                 for _, v in pairs(workspace:GetChildren()) do
                     if v.Name == "Fx" or v.Name == "Effect" or v.Name == "Particles" then v:Destroy() end
                 end
                 
-                if questOn then
+                if isQuestActive() then
                     if sethiddenproperty then sethiddenproperty(LP, "SimulationRadius", math.huge) end
                     local enemies = workspace:FindFirstChild("Enemies")
                     if enemies then
@@ -887,7 +887,7 @@ registerRight("Settings", function(scroll) end)
     local rowStroke = Instance.new("UIStroke", row); rowStroke.Thickness = 2.2; rowStroke.Color = THEME.GREEN; rowStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
     local label = Instance.new("TextLabel", row)
-    label.BackgroundTransparency = 1; label.Size = UDim2.new(1, -160, 1, 0); label.Position = UDim2.new(0, 16, 0, 0); label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Bandit Farm (Aura Stealth Mode)"
+    label.BackgroundTransparency = 1; label.Size = UDim2.new(1, -160, 1, 0); label.Position = UDim2.new(0, 16, 0, 0); label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Bandit Farm (Dialogue Auto-Hide)"
 
     local sw = Instance.new("Frame", row)
     sw.AnchorPoint = Vector2.new(1, 0.5); sw.Position = UDim2.new(1, -12, 0.5, 0); sw.Size = UDim2.fromOffset(52, 26); sw.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
@@ -901,13 +901,7 @@ registerRight("Settings", function(scroll) end)
     local function updateVisual(on)
         swStroke.Color = on and THEME.GREEN or THEME.RED
         TweenService:Create(knob, TweenInfo.new(0.1), {Position = UDim2.new(on and 1 or 0, on and -24 or 2, 0.5, -11)}):Play()
-        if not on then
-            Lighting.Brightness = oldBrightness
-            Lighting.GlobalShadows = oldShadows
-        else
-            Lighting.Brightness = 0
-            Lighting.GlobalShadows = false
-        end
+        toggleCleanMode(on)
     end
 
     local btn = Instance.new("TextButton", sw)
@@ -926,10 +920,6 @@ registerRight("Settings", function(scroll) end)
                 hrp.Anchored = false
                 char.Humanoid.PlatformStand = false
                 if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly:Destroy() end
-                -- เปิดออร่ากลับคืนเมื่อปิดสคริปต์
-                for _, fx in ipairs(char:GetDescendants()) do
-                    if fx:IsA("ParticleEmitter") or fx:IsA("Trail") then fx.Enabled = true end
-                end
             end)
         end
     end)
