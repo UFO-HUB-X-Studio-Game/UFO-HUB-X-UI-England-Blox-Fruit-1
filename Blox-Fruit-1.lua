@@ -724,7 +724,10 @@ registerRight("Settings", function(scroll) end)
     ------------------------------------------------------------------------
     
     local function isQuestActive()
-        local ok, active = pcall(function() return LP.PlayerGui.Main.Quest.Visible == true end)
+        -- ตรวจสอบว่าหน้าต่าง Quest เปิดอยู่จริงหรือไม่
+        local ok, active = pcall(function() 
+            return LP.PlayerGui.Main.Quest.Visible == true 
+        end)
         return ok and active
     end
 
@@ -746,12 +749,13 @@ registerRight("Settings", function(scroll) end)
 
     local function syncAttackAll()
         local char = LP.Character
+        -- เงื่อนไข: ต้องเปิดฟาร์มอยู่ และ Quest UI ต้อง Visible เท่านั้นถึงจะตี
         if not char or not farmLevelAuto or not isQuestActive() then return end
         
         local hrp = char:FindFirstChild("HumanoidRootPart")
         if not hrp then return end
 
-        -- ### แก้ไข: ถ้าอยู่ใกล้ตำแหน่งรับภารกิจ (NPC) จะไม่ตี ###
+        -- ป้องกันการตีใกล้ NPC (พิกัดรับภารกิจ)
         local distToNPC = (hrp.Position - posNPC).Magnitude
         if distToNPC < 20 then return end 
         
@@ -771,6 +775,7 @@ registerRight("Settings", function(scroll) end)
                 end
             end
         end
+        -- คลิกเมาส์อัตโนมัติ (จะรันเฉพาะตอน Quest Visible เท่านั้น)
         VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
         VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
     end
@@ -797,11 +802,12 @@ registerRight("Settings", function(scroll) end)
                     if p:IsA("BasePart") then p.CanCollide = false end
                 end
 
-                -- ลบเอฟเฟกต์ 100% ตลอดเวลาที่ฟาร์ม
+                -- ลบเอฟเฟกต์ 100% ตลอดเวลา
                 for _, v in pairs(workspace:GetChildren()) do
                     if v.Name == "Fx" or v.Name == "Effect" or v.Name == "Particles" then v:Destroy() end
                 end
                 
+                -- ดึงมอนสเตอร์มาหาเฉพาะตอนมีเควส
                 if isQuestActive() then
                     if sethiddenproperty then sethiddenproperty(LP, "SimulationRadius", math.huge) end
                     local enemies = workspace:FindFirstChild("Enemies")
@@ -818,6 +824,7 @@ registerRight("Settings", function(scroll) end)
         end
     end)
 
+    -- ลูปโจมตี (เช็ค Quest Visible ทุกๆ 0.01 วินาที)
     task.spawn(function()
         while true do
             if farmLevelAuto and isQuestActive() then
@@ -827,6 +834,7 @@ registerRight("Settings", function(scroll) end)
         end
     end)
 
+    -- ลูปเคลื่อนที่ (บิน)
     task.spawn(function()
         while true do
             if farmLevelAuto then
@@ -835,10 +843,11 @@ registerRight("Settings", function(scroll) end)
                     local hrp = char.HumanoidRootPart
                     local hum = char.Humanoid
                     
-                    stopAnimations()
+                    stopAnimations() -- หยุดท่าวิ่ง
                     hum.PlatformStand = true
 
                     if isQuestActive() then
+                        -- มีเควส: บินไปที่จุดฟาร์ม
                         local dist = (hrp.Position - posFarm).Magnitude
                         if dist > 5 then
                             hrp.Anchored = false
@@ -854,6 +863,7 @@ registerRight("Settings", function(scroll) end)
                             hrp.Anchored = true
                         end
                     else
+                        -- ไม่มีเควส (Visible = False): บินไปรับเควส
                         local distToNPC = (hrp.Position - posNPC).Magnitude
                         if distToNPC > 3 then
                             hrp.Anchored = false
@@ -867,6 +877,7 @@ registerRight("Settings", function(scroll) end)
                             if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly.Velocity = Vector3.zero end
                             hrp.Anchored = true
                             hrp.CFrame = CFrame.new(posNPC)
+                            -- รับภารกิจ
                             game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("StartQuest", "BanditQuest1", 1)
                             task.wait(0.5)
                         end
@@ -889,7 +900,7 @@ registerRight("Settings", function(scroll) end)
     local rowStroke = Instance.new("UIStroke", row); rowStroke.Thickness = 2.2; rowStroke.Color = THEME.GREEN; rowStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
     local label = Instance.new("TextLabel", row)
-    label.BackgroundTransparency = 1; label.Size = UDim2.new(1, -160, 1, 0); label.Position = UDim2.new(0, 16, 0, 0); label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Bandit Farm (Strict NPC Stop)"
+    label.BackgroundTransparency = 1; label.Size = UDim2.new(1, -160, 1, 0); label.Position = UDim2.new(0, 16, 0, 0); label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Bandit Farm (Quest Visibility Sync)"
 
     local sw = Instance.new("Frame", row)
     sw.AnchorPoint = Vector2.new(1, 0.5); sw.Position = UDim2.new(1, -12, 0.5, 0); sw.Size = UDim2.fromOffset(52, 26); sw.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
