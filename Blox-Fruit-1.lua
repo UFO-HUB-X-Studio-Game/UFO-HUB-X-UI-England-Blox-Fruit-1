@@ -740,7 +740,6 @@ registerRight("Home", function(scroll)
                 if p:IsA("BasePart") then p.CanCollide = false end
             end
             if isQuestActive() then
-                if sethiddenproperty then sethiddenproperty(LP, "SimulationRadius", math.huge) end
                 local enemies = workspace:FindFirstChild("Enemies")
                 if enemies then
                     for _, v in ipairs(enemies:GetChildren()) do
@@ -785,7 +784,7 @@ registerRight("Home", function(scroll)
         end
     end)
 
-    -- [Loop 3] Movement (Smooth & Clean Reset)
+    -- [Loop 3] Movement
     task.spawn(function()
         while true do
             if farmLevelAuto then
@@ -837,7 +836,7 @@ registerRight("Home", function(scroll)
 
     local label = Instance.new("TextLabel", row)
     label.BackgroundTransparency = 1; label.Size = UDim2.new(1, -160, 1, 0); label.Position = UDim2.new(0, 16, 0, 0)
-    label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Bandit Farm (Force Reset Walk)"
+    label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Bandit Farm (Aura & Walk Fix)"
 
     local sw = Instance.new("Frame", row)
     sw.AnchorPoint = Vector2.new(1, 0.5); sw.Position = UDim2.new(1, -12, 0.5, 0); sw.Size = UDim2.fromOffset(52, 26); sw.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
@@ -863,31 +862,29 @@ registerRight("Home", function(scroll)
         updateVisual(farmLevelAuto)
         
         if not farmLevelAuto then
-            -- เมื่อปิด: เคลียร์ทุกอย่างแบบ Force
             pcall(function()
                 local char = LP.Character
-                if not char then return end
                 local hrp = char:FindFirstChild("HumanoidRootPart")
                 local hum = char:FindFirstChildOfClass("Humanoid")
                 
-                -- 1. ปลดล็อค Anchored และแรงดีด
                 if hrp then
                     hrp.Anchored = false
-                    hrp.Velocity = Vector3.zero
+                    -- วาร์ปลงพื้นทันทีเพื่อให้เดินได้
+                    hrp.CFrame = CFrame.new(hrp.Position.X, posGround.Y + 3, hrp.Position.Z)
+                    hrp.AssemblyLinearVelocity = Vector3.zero
+                    hrp.AssemblyAngularVelocity = Vector3.zero
                     if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly:Destroy() end
                     if hrp:FindFirstChild("UFO_Gyro") then hrp.UFO_Gyro:Destroy() end
                 end
                 
-                -- 2. รีเซ็ตสถานะร่างกาย (จุดตายของปัญหา)
                 if hum then
                     hum.PlatformStand = false
-                    hum.Sit = false -- ป้องกันสถานะนั่งค้าง
-                    hum.Jump = true -- บังคับกระโดดเพื่อรีเซ็ต Physics State
+                    hum.Sit = false
                     task.wait(0.1)
+                    hum:ChangeState(Enum.HumanoidStateType.Running) -- บังคับเข้าสถานะวิ่ง
                     hum:ChangeState(Enum.HumanoidStateType.GettingUp)
                 end
 
-                -- 3. คืนค่าการชนกันของร่างกาย
                 for _, p in ipairs(char:GetDescendants()) do
                     if p:IsA("BasePart") then p.CanCollide = true end
                 end
