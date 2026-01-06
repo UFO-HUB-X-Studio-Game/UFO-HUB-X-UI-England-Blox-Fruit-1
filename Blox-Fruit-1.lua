@@ -716,10 +716,10 @@ registerRight("Settings", function(scroll) end)
     ------------------------------------------------------------------------
     local farmLevelAuto = SaveGet("AutoFarmState", false)
     local posNPC = Vector3.new(1059.757, 16.398, 1549.047)
-    local posFarm = Vector3.new(1193.877, 44.298, 1614.491)
+    local posFarm = Vector3.new(1193.877, 44.298, 1614.491) -- ตำแหน่งบนฟ้า
 
     ------------------------------------------------------------------------
-    -- [3] ฟังก์ชันช่วยเหลือ (เน้นการทะลุแมพและคืนค่า)
+    -- [3] ฟังก์ชันช่วยเหลือ
     ------------------------------------------------------------------------
     
     local function isQuestActive()
@@ -739,61 +739,45 @@ registerRight("Settings", function(scroll) end)
         end)
     end
 
-    -- ฟังก์ชันคืนค่าตัวละคร (ปิด Noclip และกลับมายืนปกติ)
     local function resetCharacterStatus()
         local char = LP.Character
         if char then
             local hum = char:FindFirstChildOfClass("Humanoid")
             local hrp = char:FindFirstChild("HumanoidRootPart")
-            
             if hrp then
                 hrp.Anchored = false
                 if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly:Destroy() end
                 if hrp:FindFirstChild("UFO_Gyro") then hrp.UFO_Gyro:Destroy() end
                 hrp.Velocity = Vector3.new(0, 0, 0)
             end
-            
             if hum then
                 hum.PlatformStand = false
                 hum:ChangeState(Enum.HumanoidStateType.GettingUp)
             end
-
-            -- บังคับคืนค่าการชนกันทันที
             for _, v in ipairs(char:GetDescendants()) do
-                if v:IsA("BasePart") then
-                    v.CanCollide = true
-                end
+                if v:IsA("BasePart") then v.CanCollide = true end
             end
         end
     end
 
     local function flyToLocation(targetPos)
         local char = LP.Character
-        if not char or not char:FindFirstChild("HumanoidRootPart") or not char:FindFirstChild("Humanoid") then return end
+        if not char or not char:FindFirstChild("HumanoidRootPart") then return end
         local hrp = char.HumanoidRootPart
-        local hum = char.Humanoid
+        local hum = char:FindFirstChildOfClass("Humanoid")
 
-        local dist = (hrp.Position - targetPos).Magnitude
-        
-        -- ล็อคท่าทางให้นิ่งขณะบิน
         hum.PlatformStand = true 
+        local dist = (hrp.Position - targetPos).Magnitude
 
         if dist > 5 then
             hrp.Anchored = false
             if not hrp:FindFirstChild("UFO_Fly") then
-                local bv = Instance.new("BodyVelocity", hrp)
-                bv.Name = "UFO_Fly"
-                bv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
-                
-                local bg = Instance.new("BodyGyro", hrp)
-                bg.Name = "UFO_Gyro"
-                bg.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
-                bg.P = 3000
+                local bv = Instance.new("BodyVelocity", hrp); bv.Name = "UFO_Fly"; bv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+                local bg = Instance.new("BodyGyro", hrp); bg.Name = "UFO_Gyro"; bg.MaxTorque = Vector3.new(9e9, 9e9, 9e9); bg.P = 3000
             end
             hrp.CFrame = CFrame.new(hrp.Position, targetPos)
             hrp.UFO_Fly.Velocity = (targetPos - hrp.Position).Unit * 135
         else
-            -- ล็อคตำแหน่งเมื่อถึงจุดหมาย
             if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly.Velocity = Vector3.new(0,0,0) end
             hrp.CFrame = CFrame.new(targetPos)
             hrp.Anchored = true 
@@ -801,19 +785,51 @@ registerRight("Settings", function(scroll) end)
     end
 
     ------------------------------------------------------------------------
-    -- [4] LOOP ระบบฟาร์ม (Noclip 100%)
+    -- [4] ระบบดึงศัตรู (Bring Bandit)
     ------------------------------------------------------------------------
-    -- ระบบ Noclip ทะลุทุกอย่างรวมถึง Map
+    local function bringEnemies()
+        if not farmLevelAuto then return end
+        
+        -- ปรับ SimulationRadius ให้ดึงมอนได้ไกลขึ้น
+        if sethiddenproperty then
+            sethiddenproperty(LP, "SimulationRadius", math.huge)
+        end
+
+        local enemiesFolder = workspace:FindFirstChild("Enemies")
+        if enemiesFolder then
+            for _, v in ipairs(enemiesFolder:GetChildren()) do
+                -- เช็คชื่อ Bandit (รวมตัวเลเวล 5 และตัวที่เกิดใหม่)
+                if v.Name:find("Bandit") and v:FindFirstChild("HumanoidRootPart") and v:FindFirstChild("Humanoid") then
+                    if v.Humanoid.Health > 0 then
+                        -- สถานะมอนสเตอร์: ตัวใหญ่, ใส, ทะลุ, เดินไม่ได้
+                        v.HumanoidRootPart.CanCollide = false
+                        v.HumanoidRootPart.Size = Vector3.new(60, 60, 60)
+                        v.HumanoidRootPart.Transparency = 1
+                        v.Humanoid.WalkSpeed = 0
+                        v.Humanoid.JumpPower = 0
+                        
+                        -- ดึงมาที่ตำแหน่งใต้เท้า (posFarm ที่เราค้างอยู่บนฟ้า)
+                        -- ปรับตำแหน่งให้อยู่ต่ำกว่าตัวละครเราเล็กน้อย (ประมาณ 5 หน่วย)
+                        v.HumanoidRootPart.CFrame = CFrame.new(posFarm - Vector3.new(0, 5, 0))
+                    end
+                end
+            end
+        end
+    end
+
+    ------------------------------------------------------------------------
+    -- [5] LOOP หลัก
+    ------------------------------------------------------------------------
     RunService.Stepped:Connect(function()
         if farmLevelAuto then
             local char = LP.Character
             if char then
                 for _, v in ipairs(char:GetDescendants()) do
-                    if v:IsA("BasePart") then 
-                        v.CanCollide = false 
-                    end
+                    if v:IsA("BasePart") then v.CanCollide = false end
                 end
             end
+            -- ดึงมอนสเตอร์ทุกเฟรม
+            bringEnemies()
         end
     end)
 
@@ -843,33 +859,24 @@ registerRight("Settings", function(scroll) end)
     end)
 
     ------------------------------------------------------------------------
-    -- [5] การสร้าง UI (Model A V1 แบบยาว)
+    -- [6] UI Model A V1
     ------------------------------------------------------------------------
-    local THEME = {
-        GREEN = Color3.fromRGB(25, 255, 125),
-        RED   = Color3.fromRGB(255, 40, 40),
-        WHITE = Color3.fromRGB(255, 255, 255),
-        BLACK = Color3.fromRGB(0, 0, 0),
-    }
-
+    local THEME = { GREEN = Color3.fromRGB(25, 255, 125), RED = Color3.fromRGB(255, 40, 40), WHITE = Color3.fromRGB(255, 255, 255), BLACK = Color3.fromRGB(0, 0, 0) }
     for _, child in ipairs(scroll:GetChildren()) do
         if child.Name == "A_Header_Farm" or child.Name == "A_Row_Farm" then child:Destroy() end
     end
 
-    local header = Instance.new("TextLabel")
-    header.Name = "A_Header_Farm"
-    header.BackgroundTransparency = 1; header.Size = UDim2.new(1, 0, 0, 36)
-    header.Font = Enum.Font.GothamBold; header.TextSize = 16; header.TextColor3 = THEME.WHITE
-    header.TextXAlignment = Enum.TextXAlignment.Left; header.Text = "🚜 Farm Level"; header.LayoutOrder = 1; header.Parent = scroll
+    local header = Instance.new("TextLabel", scroll)
+    header.Name = "A_Header_Farm"; header.BackgroundTransparency = 1; header.Size = UDim2.new(1, 0, 0, 36)
+    header.Font = Enum.Font.GothamBold; header.TextSize = 16; header.TextColor3 = THEME.WHITE; header.TextXAlignment = Enum.TextXAlignment.Left; header.Text = "🚜 Farm Level"; header.LayoutOrder = 1
 
-    local row = Instance.new("Frame")
+    local row = Instance.new("Frame", scroll)
     row.Name = "A_Row_Farm"; row.Size = UDim2.new(1, -6, 0, 46); row.BackgroundColor3 = THEME.BLACK; row.LayoutOrder = 2
     local rowCorner = Instance.new("UICorner", row); rowCorner.CornerRadius = UDim.new(0, 12)
     local rowStroke = Instance.new("UIStroke", row); rowStroke.Thickness = 2.2; rowStroke.Color = THEME.GREEN; rowStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
     local label = Instance.new("TextLabel", row)
-    label.BackgroundTransparency = 1; label.Size = UDim2.new(1, -160, 1, 0); label.Position = UDim2.new(0, 16, 0, 0)
-    label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Farm Level Auto"
+    label.BackgroundTransparency = 1; label.Size = UDim2.new(1, -160, 1, 0); label.Position = UDim2.new(0, 16, 0, 0); label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Farm Level Auto"
 
     local sw = Instance.new("Frame", row)
     sw.AnchorPoint = Vector2.new(1, 0.5); sw.Position = UDim2.new(1, -12, 0.5, 0); sw.Size = UDim2.fromOffset(52, 26); sw.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
@@ -891,13 +898,10 @@ registerRight("Settings", function(scroll) end)
         farmLevelAuto = not farmLevelAuto
         SaveSet("AutoFarmState", farmLevelAuto)
         updateVisual(farmLevelAuto)
-        if not farmLevelAuto then 
-            resetCharacterStatus() 
-        end
+        if not farmLevelAuto then resetCharacterStatus() end
     end)
 
     updateVisual(farmLevelAuto)
-    row.Parent = scroll
 end)
 -- ===== UFO HUB X • Home – Bomb Finder (Model A V1) =====
 
