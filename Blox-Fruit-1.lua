@@ -757,12 +757,9 @@ registerRight("Home", function(scroll)
         
         local hrp = char:FindFirstChild("HumanoidRootPart")
         if not hrp then return end
-
-        local distToNPC = (hrp.Position - posNPC).Magnitude
-        if distToNPC < 30 then return end 
+        if (hrp.Position - posNPC).Magnitude < 30 then return end 
         
         equipCombat()
-        
         local netRE = game:GetService("ReplicatedStorage"):WaitForChild("Modules"):WaitForChild("Net")
         local enemiesFolder = workspace:FindFirstChild("Enemies")
         if enemiesFolder then
@@ -787,43 +784,30 @@ registerRight("Home", function(scroll)
     ------------------------------------------------------------------------
     
     RunService.Stepped:Connect(function()
+        local char = LP.Character
+        if not char then return end
+        
         if farmLevelAuto then
             -- ปิด Dialogue
-            pcall(function()
-                if LP.PlayerGui.Main.Dialogue.Visible then
-                    LP.PlayerGui.Main.Dialogue.Visible = false
-                end
-            end)
+            pcall(function() if LP.PlayerGui.Main.Dialogue.Visible then LP.PlayerGui.Main.Dialogue.Visible = false end end)
 
-            local char = LP.Character
-            if char then
-                local hrp = char:FindFirstChild("HumanoidRootPart")
-                local questOn = isQuestActive()
-                local distToNPC = hrp and (hrp.Position - posNPC).Magnitude or 999
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            local questOn = isQuestActive()
+            
+            -- Noclip: เมื่อเปิดฟาร์ม
+            for _, p in ipairs(char:GetDescendants()) do
+                if p:IsA("BasePart") then p.CanCollide = false end
+            end
 
-                -- Noclip และ ปิด Aura ตัวละคร
-                for _, p in ipairs(char:GetDescendants()) do
-                    if p:IsA("BasePart") then p.CanCollide = false end
-                    if (distToNPC < 30 or not questOn) and (p:IsA("ParticleEmitter") or p:IsA("Trail")) then
-                        p.Enabled = false
-                    end
-                end
-
-                -- ลบ Fx ในแมพ
-                for _, v in pairs(workspace:GetChildren()) do
-                    if v.Name == "Fx" or v.Name == "Effect" or v.Name == "Particles" then v:Destroy() end
-                end
-
-                -- ### [เพิ่มกลับมา] ระบบดึงศัตรูมาที่จุดฟาร์ม ###
-                if questOn then
-                    if sethiddenproperty then sethiddenproperty(LP, "SimulationRadius", math.huge) end
-                    local enemies = workspace:FindFirstChild("Enemies")
-                    if enemies then
-                        for _, v in ipairs(enemies:GetChildren()) do
-                            if v.Name == targetName and v:FindFirstChild("HumanoidRootPart") then
-                                v.HumanoidRootPart.CanCollide = false
-                                v.HumanoidRootPart.CFrame = CFrame.new(posGround) -- ดึงมาที่จุดที่ยืนฟาร์ม
-                            end
+            -- Bring Mobs
+            if questOn then
+                if sethiddenproperty then sethiddenproperty(LP, "SimulationRadius", math.huge) end
+                local enemies = workspace:FindFirstChild("Enemies")
+                if enemies then
+                    for _, v in ipairs(enemies:GetChildren()) do
+                        if v.Name == targetName and v:FindFirstChild("HumanoidRootPart") then
+                            v.HumanoidRootPart.CanCollide = false
+                            v.HumanoidRootPart.CFrame = CFrame.new(posGround)
                         end
                     end
                 end
@@ -831,7 +815,6 @@ registerRight("Home", function(scroll)
         end
     end)
 
-    -- ลูปโจมตี
     task.spawn(function()
         while true do
             if farmLevelAuto then
@@ -842,7 +825,6 @@ registerRight("Home", function(scroll)
         end
     end)
 
-    -- ลูปเคลื่อนที่
     task.spawn(function()
         while true do
             if farmLevelAuto then
@@ -896,7 +878,7 @@ registerRight("Home", function(scroll)
     local rowStroke = Instance.new("UIStroke", row); rowStroke.Thickness = 2.2; rowStroke.Color = THEME.GREEN; rowStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
     local label = Instance.new("TextLabel", row)
-    label.BackgroundTransparency = 1; label.Size = UDim2.new(1, -160, 1, 0); label.Position = UDim2.new(0, 16, 0, 0); label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Bandit Farm (Fixed Mobs)"
+    label.BackgroundTransparency = 1; label.Size = UDim2.new(1, -160, 1, 0); label.Position = UDim2.new(0, 16, 0, 0); label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Bandit Farm (Fixed Off State)"
 
     local sw = Instance.new("Frame", row)
     sw.AnchorPoint = Vector2.new(1, 0.5); sw.Position = UDim2.new(1, -12, 0.5, 0); sw.Size = UDim2.fromOffset(52, 26); sw.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
@@ -921,26 +903,34 @@ registerRight("Home", function(scroll)
         SaveSet("AutoFarmState", farmLevelAuto)
         updateVisual(farmLevelAuto)
         
-        if not farmLevelAuto then
-            pcall(function()
-                local char = LP.Character
-                local hrp = char:FindFirstChild("HumanoidRootPart")
-                local hum = char:FindFirstChildOfClass("Humanoid")
-                
+        -- ### ทำการ Reset ทุกอย่างทันทีที่กดปิด ###
+        pcall(function()
+            local char = LP.Character
+            if not char then return end
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            
+            if not farmLevelAuto then
+                -- 1. ปลดล็อคตัวละคร
                 if hrp then
                     hrp.Anchored = false
                     if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly:Destroy() end
                     if hrp:FindFirstChild("UFO_Gyro") then hrp.UFO_Gyro:Destroy() end
                 end
                 
-                if hum then hum.PlatformStand = false end
-
-                for _, p in ipairs(char:GetDescendants()) do
-                    if p:IsA("BasePart") then p.CanCollide = true end
-                    if p:IsA("ParticleEmitter") or p:IsA("Trail") then p.Enabled = true end
+                -- 2. คืนค่าการเดิน
+                if hum then
+                    hum.PlatformStand = false
                 end
-            end)
-        end
+
+                -- 3. คืนค่าการชนกัน (CanCollide)
+                for _, p in ipairs(char:GetDescendants()) do
+                    if p:IsA("BasePart") then
+                        p.CanCollide = true
+                    end
+                end
+            end
+        end)
     end)
 
     updateVisual(farmLevelAuto)
