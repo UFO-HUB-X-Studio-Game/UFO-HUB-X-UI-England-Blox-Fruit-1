@@ -716,21 +716,18 @@ registerRight("Settings", function(scroll) end)
     ------------------------------------------------------------------------
     local farmLevelAuto = SaveGet("AutoFarmState", false)
     local posNPC = Vector3.new(1059.757, 16.398, 1549.047)
-    local posFarm = Vector3.new(1193.877, 44.298, 1614.491)
+    local posFarm = Vector3.new(1193.877, 44.298, 1614.491) -- จุดค้างบนฟ้า
+    local posGround = Vector3.new(1193.798, 16.743, 1615.949) -- จุดที่มอนสเตอร์ต้องอยู่ (พื้น)
 
     ------------------------------------------------------------------------
     -- [3] ฟังก์ชันช่วยเหลือ
     ------------------------------------------------------------------------
     
     local function isQuestActive()
-        local active = false
-        pcall(function()
-            -- เช็คว่า UI เควสเปิดอยู่หรือไม่
-            if LP.PlayerGui.Main.Quest.Visible == true then
-                active = true
-            end
+        local ok, active = pcall(function()
+            return LP.PlayerGui.Main.Quest.Visible == true
         end)
-        return active
+        return ok and active
     end
 
     local function talkToNPC()
@@ -749,7 +746,7 @@ registerRight("Settings", function(scroll) end)
                 hrp.Anchored = false
                 if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly:Destroy() end
                 if hrp:FindFirstChild("UFO_Gyro") then hrp.UFO_Gyro:Destroy() end
-                hrp.Velocity = Vector3.new(0, 0, 0)
+                hrp.Velocity = Vector3.zero
             end
             if hum then
                 hum.PlatformStand = false
@@ -761,46 +758,31 @@ registerRight("Settings", function(scroll) end)
         end
     end
 
-    local function flyToLocation(targetPos)
-        local char = LP.Character
-        if not char or not char:FindFirstChild("HumanoidRootPart") then return end
-        local hrp = char.HumanoidRootPart
-        local hum = char:FindFirstChildOfClass("Humanoid")
-
-        hum.PlatformStand = true 
-        local dist = (hrp.Position - targetPos).Magnitude
-
-        if dist > 5 then
-            hrp.Anchored = false
-            if not hrp:FindFirstChild("UFO_Fly") then
-                local bv = Instance.new("BodyVelocity", hrp); bv.Name = "UFO_Fly"; bv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
-                local bg = Instance.new("BodyGyro", hrp); bg.Name = "UFO_Gyro"; bg.MaxTorque = Vector3.new(9e9, 9e9, 9e9); bg.P = 3000
-            end
-            hrp.CFrame = CFrame.new(hrp.Position, targetPos)
-            hrp.UFO_Fly.Velocity = (targetPos - hrp.Position).Unit * 135
-            return false -- ยังบินไม่ถึง
-        else
-            -- ถึงแล้ว ล็อคค้างบนฟ้า
-            if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly.Velocity = Vector3.new(0,0,0) end
-            hrp.CFrame = CFrame.new(targetPos)
-            hrp.Anchored = true 
-            return true -- ถึงจุดหมายและลอยตัวแล้ว
+    ------------------------------------------------------------------------
+    -- [4] ระบบจัดการสถานะศัตรู (Fast & Grounded)
+    ------------------------------------------------------------------------
+    local function setEnemyStatus(v)
+        if v:FindFirstChild("HumanoidRootPart") and v:FindFirstChild("Humanoid") then
+            -- ตั้งค่าสถานะให้ไวที่สุด (ยัดค่าซ้ำตามที่ระบุเพื่อความชัวร์)
+            v.HumanoidRootPart.Size = Vector3.new(60, 60, 60)
+            v.HumanoidRootPart.Transparency = 1
+            v.HumanoidRootPart.CanCollide = false
+            v.Humanoid.WalkSpeed = 0
+            v.Humanoid.JumpPower = 0
+            
+            -- บังคับตำแหน่งให้อยู่ที่พื้น (ใต้ตีนเราที่ค้างอยู่บนฟ้า)
+            v.HumanoidRootPart.CFrame = CFrame.new(posGround)
         end
     end
 
-    ------------------------------------------------------------------------
-    -- [4] ระบบดึงศัตรู (Bring Bandit)
-    ------------------------------------------------------------------------
     local function bringEnemies()
-        -- เงื่อนไข: ต้องเปิดออโต้ฟาร์ม + เควสต้อง Active + ตัวละครต้องลอยค้างอยู่ที่จุดฟาร์มแล้ว
         if not farmLevelAuto or not isQuestActive() then return end
         
-        local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-        if not hrp then return end
+        local char = LP.Character
+        if not char or not char:FindFirstChild("HumanoidRootPart") then return end
         
-        -- เช็คว่าตัวละครอยู่ที่จุดฟาร์ม (ลอยฟ้า) หรือยัง
-        local distToFarm = (hrp.Position - posFarm).Magnitude
-        if distToFarm > 10 then return end -- ถ้ายังไม่ถึงจุดค้างบนฟ้า ไม่ต้องดึง
+        -- เช็คว่าตัวละครเราถึงจุดค้างบนฟ้าหรือยัง (ระยะ 10 หน่วย)
+        if (char.HumanoidRootPart.Position - posFarm).Magnitude > 10 then return end
 
         if sethiddenproperty then
             sethiddenproperty(LP, "SimulationRadius", math.huge)
@@ -809,33 +791,39 @@ registerRight("Settings", function(scroll) end)
         local enemiesFolder = workspace:FindFirstChild("Enemies")
         if enemiesFolder then
             for _, v in ipairs(enemiesFolder:GetChildren()) do
-                if v.Name:find("Bandit") and v:FindFirstChild("HumanoidRootPart") and v:FindFirstChild("Humanoid") then
-                    if v.Humanoid.Health > 0 then
-                        v.HumanoidRootPart.CanCollide = false
-                        v.HumanoidRootPart.Size = Vector3.new(60, 60, 60)
-                        v.HumanoidRootPart.Transparency = 1
-                        v.Humanoid.WalkSpeed = 0
-                        v.Humanoid.JumpPower = 0
-                        -- ดึงมาใต้เท้า (จุดที่ลอยค้างอยู่)
-                        v.HumanoidRootPart.CFrame = CFrame.new(posFarm - Vector3.new(0, 5, 0))
-                    end
+                if v.Name:find("Bandit") and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
+                    setEnemyStatus(v)
                 end
             end
         end
     end
 
     ------------------------------------------------------------------------
-    -- [5] LOOP หลัก
+    -- [5] LOOP หลักและการจัดการตัวเกิดใหม่
     ------------------------------------------------------------------------
+    
+    -- จัดการตัวที่เกิดใหม่ทันที (ChildAdded)
+    task.spawn(function()
+        local enemiesFolder = workspace:WaitForChild("Enemies")
+        enemiesFolder.ChildAdded:Connect(function(child)
+            if farmLevelAuto and isQuestActive() then
+                -- รอให้ RootPart โหลดแป๊บเดียวแล้วยัดสถานะทันที
+                local hrp = child:WaitForChild("HumanoidRootPart", 5)
+                if hrp then setEnemyStatus(child) end
+            end
+        end)
+    end)
+
     RunService.Stepped:Connect(function()
         if farmLevelAuto then
+            -- Noclip ตัวละครเรา
             local char = LP.Character
             if char then
                 for _, v in ipairs(char:GetDescendants()) do
                     if v:IsA("BasePart") then v.CanCollide = false end
                 end
             end
-            -- ดึงมอนสเตอร์ (ฟังก์ชันนี้มีเช็คเควสและจุดลอยตัวอยู่ข้างในแล้ว)
+            -- ดึงมอนสเตอร์ทุกเฟรม (รวมตัวที่อยู่เดิมและตัวใหม่)
             bringEnemies()
         end
     end)
@@ -847,15 +835,43 @@ registerRight("Settings", function(scroll) end)
                     local lv = LP.Data.Level.Value
                     if lv >= 1 and lv <= 9 then
                         if isQuestActive() then
-                            -- บินไปจุดฟาร์มและลอยตัว
-                            flyToLocation(posFarm)
+                            -- บินไปจุดฟาร์มและค้างบนฟ้า
+                            local char = LP.Character
+                            if char and char:FindFirstChild("HumanoidRootPart") then
+                                local hrp = char.HumanoidRootPart
+                                local hum = char.Humanoid
+                                local dist = (hrp.Position - posFarm).Magnitude
+                                
+                                if dist > 5 then
+                                    hum.PlatformStand = true
+                                    hrp.Anchored = false
+                                    if not hrp:FindFirstChild("UFO_Fly") then
+                                        local bv = Instance.new("BodyVelocity", hrp); bv.Name = "UFO_Fly"; bv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+                                        local bg = Instance.new("BodyGyro", hrp); bg.Name = "UFO_Gyro"; bg.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+                                    end
+                                    hrp.CFrame = CFrame.new(hrp.Position, posFarm)
+                                    hrp.UFO_Fly.Velocity = (posFarm - hrp.Position).Unit * 150
+                                else
+                                    if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly.Velocity = Vector3.zero end
+                                    hrp.CFrame = CFrame.new(posFarm)
+                                    hrp.Anchored = true 
+                                end
+                            end
                         else
-                            -- ถ้าเควสไม่ว่าง (Visible false) ให้ไปรับภารกิจก่อน
+                            -- รับเควส
                             local distToNPC = (LP.Character.HumanoidRootPart.Position - posNPC).Magnitude
                             if distToNPC > 5 then
-                                flyToLocation(posNPC)
+                                -- บินไปหา NPC
+                                local hrp = LP.Character.HumanoidRootPart
+                                hrp.Anchored = false
+                                if not hrp:FindFirstChild("UFO_Fly") then
+                                    Instance.new("BodyVelocity", hrp).Name = "UFO_Fly"
+                                end
+                                hrp.CFrame = CFrame.new(hrp.Position, posNPC)
+                                hrp.UFO_Fly.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+                                hrp.UFO_Fly.Velocity = (posNPC - hrp.Position).Unit * 150
                             else
-                                resetCharacterStatus() -- คืนค่าตัวละครเพื่อยืนคุยกับ NPC
+                                resetCharacterStatus()
                                 talkToNPC()
                                 task.wait(1)
                             end
