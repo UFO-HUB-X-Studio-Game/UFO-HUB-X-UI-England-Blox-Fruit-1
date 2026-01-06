@@ -691,7 +691,7 @@ end)
 
 registerRight("Home", function(scroll) end)
 registerRight("Settings", function(scroll) end)
-registerRight("Home", function(scroll)
+    registerRight("Home", function(scroll)
     local TweenService = game:GetService("TweenService")
     local LP = game:GetService("Players").LocalPlayer
 
@@ -710,44 +710,87 @@ registerRight("Home", function(scroll)
     }
 
     ------------------------------------------------------------------------
-    -- FARM LOGIC (checklevel ตามสั่ง)
+    -- FARM LOGIC (บินไปจุดฟาร์ม + ทะลุแมพ)
     ------------------------------------------------------------------------
     local farmLevelAuto = SaveGet("AutoFarm", false)
+    local targetPos = Vector3.new(1059.757, 16.398, 1549.047) -- ตำแหน่งนิกร
+
+    -- ฟังก์ชันบิน (Tween)
+    local function flyTo(pos)
+        local char = LP.Character
+        if char and char:FindFirstChild("HumanoidRootPart") then
+            local hrp = char.HumanoidRootPart
+            local distance = (hrp.Position - pos).Magnitude
+            local speed = 100 -- ปรับความเร็วการบินตรงนี้
+            
+            local tweenInfo = TweenInfo.new(distance / speed, Enum.EasingStyle.Linear)
+            local tween = TweenService:Create(hrp, tweenInfo, {CFrame = CFrame.new(pos)})
+            
+            -- เปิด Noclip ขณะบิน
+            local noclipLoop
+            noclipLoop = game:GetService("RunService").Stepped:Connect(function()
+                if tween.PlaybackState == Enum.PlaybackState.Playing then
+                    for _, part in ipairs(char:GetDescendants()) do
+                        if part:IsA("BasePart") then part.CanCollide = false end
+                    end
+                else
+                    noclipLoop:Disconnect()
+                end
+            end)
+            
+            tween:Play()
+        end
+    end
 
     local function checklevel()
         pcall(function()
             local Level = LP.Data.Level.Value
-            print(Level)
+            print("Current Level: ".. Level)
+            
+            -- เงื่อนไข: ถ้าเลเวล 1 ถึง 9 ให้ไปจุดฟาร์มแรก
+            if Level >= 1 and Level <= 9 then
+                local char = LP.Character
+                if char and char:FindFirstChild("HumanoidRootPart") then
+                    local currentPos = char.HumanoidRootPart.Position
+                    -- ถ้าอยู่ห่างจากจุดหมายเกิน 5 เมตร ให้บินไป
+                    if (currentPos - targetPos).Magnitude > 5 then
+                        flyTo(targetPos)
+                    end
+                end
+            end
         end)
     end
 
+    -- Loop หลัก
     task.spawn(function()
         while true do
-            if farmLevelAuto then checklevel() end
+            if farmLevelAuto then 
+                checklevel() 
+            end
             task.wait(1)
         end
     end)
 
     ------------------------------------------------------------------------
-    -- UI CONSTRUCTION (ปรับปรุงเพื่อให้ขนาดปกติ 100%)
+    -- UI CONSTRUCTION (ขนาดปกติ 100%)
     ------------------------------------------------------------------------
     -- 1. HEADER: 🚜 Farm Level
     local header = Instance.new("TextLabel")
     header.Name = "Farm_Header"
     header.BackgroundTransparency = 1
-    header.Size = UDim2.new(1, 0, 0, 36) -- ขนาดมาตรฐาน V1
+    header.Size = UDim2.new(1, 0, 0, 36)
     header.Font = Enum.Font.GothamBold
     header.TextSize = 16
     header.TextColor3 = THEME.WHITE
     header.TextXAlignment = Enum.TextXAlignment.Left
     header.Text = "🚜 Farm Level"
     header.LayoutOrder = 1
-    header.Parent = scroll -- ใส่ Parent ทีหลังสุด
+    header.Parent = scroll 
 
     -- 2. ROW: Farm Level Auto
     local row = Instance.new("Frame")
     row.Name = "Farm_Row"
-    row.Size = UDim2.new(1, -6, 0, 46) -- ขนาดความสูงมาตรฐาน 46
+    row.Size = UDim2.new(1, -6, 0, 46)
     row.BackgroundColor3 = THEME.BLACK
     row.LayoutOrder = 2
     
@@ -802,7 +845,7 @@ registerRight("Home", function(scroll)
     end)
 
     update(farmLevelAuto)
-    row.Parent = scroll -- ใส่ Parent ทีหลังสุดเพื่อให้ Layout ไม่เพี้ยน
+    row.Parent = scroll 
 end)
 -- ===== UFO HUB X • Home – Bomb Finder (Model A V1) =====
 
