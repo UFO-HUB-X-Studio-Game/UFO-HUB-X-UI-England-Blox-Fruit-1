@@ -743,7 +743,7 @@ registerRight("Home", function(scroll)
 
     local function equipCombat()
         local char = LP.Character
-        if not char then return end
+        if not char or not farmLevelAuto then return end
         local combat = LP.Backpack:FindFirstChild("Combat") or char:FindFirstChild("Combat")
         if combat and combat.Parent ~= char then 
             local hum = char:FindFirstChildOfClass("Humanoid")
@@ -783,7 +783,7 @@ registerRight("Home", function(scroll)
     end
 
     ------------------------------------------------------------------------
-    -- [4] LOOP การทำงาน (Noclip & Stable Position)
+    -- [4] LOOP การทำงาน
     ------------------------------------------------------------------------
     
     RunService.Stepped:Connect(function()
@@ -810,35 +810,20 @@ registerRight("Home", function(scroll)
                 for _, v in pairs(workspace:GetChildren()) do
                     if v.Name == "Fx" or v.Name == "Effect" or v.Name == "Particles" then v:Destroy() end
                 end
-                
-                if questOn then
-                    if sethiddenproperty then sethiddenproperty(LP, "SimulationRadius", math.huge) end
-                    local enemies = workspace:FindFirstChild("Enemies")
-                    if enemies then
-                        for _, v in ipairs(enemies:GetChildren()) do
-                            if v.Name == targetName and v:FindFirstChild("HumanoidRootPart") then
-                                v.HumanoidRootPart.CanCollide = false
-                                v.HumanoidRootPart.CFrame = CFrame.new(posGround)
-                            end
-                        end
-                    end
-                end
             end
         end
     end)
 
-    -- ลูปโจมตีและการถืออาวุธ
     task.spawn(function()
         while true do
             if farmLevelAuto then
-                equipCombat() -- เน้นให้ถือหมัดก่อนเริ่มโจมตี
+                equipCombat()
                 if isQuestActive() then syncAttackAll() end
             end
-            task.wait(0.05)
+            task.wait(0.1)
         end
     end)
 
-    -- ลูปเคลื่อนที่ (แก้ไขการสั่นและการหมุนวน v3)
     task.spawn(function()
         while true do
             if farmLevelAuto then
@@ -854,30 +839,22 @@ registerRight("Home", function(scroll)
                     local targetPos = isQuestActive() and posFarm or posNPC
                     local dist = (hrp.Position - targetPos).Magnitude
                     
-                    if dist > 5 then -- ระยะหยุดที่กว้างขึ้นเพื่อความสมูท
+                    if dist > 5 then
                         hrp.Anchored = false
-                        
-                        -- BodyVelocity: ควบคุมความเร็ว
                         local bv = hrp:FindFirstChild("UFO_Fly") or Instance.new("BodyVelocity", hrp)
-                        bv.Name = "UFO_Fly"
-                        bv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+                        bv.Name = "UFO_Fly"; bv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
                         bv.Velocity = (targetPos - hrp.Position).Unit * 185
                         
-                        -- BodyGyro: ล็อคหน้าให้ตรงเป้าหมาย กันหมุนติ้ว
                         local bg = hrp:FindFirstChild("UFO_Gyro") or Instance.new("BodyGyro", hrp)
-                        bg.Name = "UFO_Gyro"
-                        bg.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
-                        bg.P = 5000
+                        bg.Name = "UFO_Gyro"; bg.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
                         bg.CFrame = CFrame.new(hrp.Position, targetPos)
                     else
-                        -- ถึงที่หมายแล้ว: ล้างระบบ Fly ทั้งหมดออกเพื่อให้ตัวละครนิ่งสนิท
+                        -- ถึงจุดหมาย: เคลียร์ระบบบินก่อนล็อคเป้าเพื่อลดอาการสั่น
                         if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly:Destroy() end
                         if hrp:FindFirstChild("UFO_Gyro") then hrp.UFO_Gyro:Destroy() end
-                        
                         hrp.Anchored = true
                         hrp.CFrame = CFrame.new(targetPos)
                         
-                        -- ถ้ายังไม่มีเควส ให้ส่งคำสั่งรับเควส
                         if not isQuestActive() then
                             game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("StartQuest", "BanditQuest1", 1)
                             task.wait(0.5)
@@ -890,7 +867,7 @@ registerRight("Home", function(scroll)
     end)
 
     ------------------------------------------------------------------------
-    -- [5] UI
+    -- [5] UI & Reset Logic
     ------------------------------------------------------------------------
     local THEME = { GREEN = Color3.fromRGB(25, 255, 125), RED = Color3.fromRGB(255, 40, 40), WHITE = Color3.fromRGB(255, 255, 255), BLACK = Color3.fromRGB(0, 0, 0) }
     for _, child in ipairs(scroll:GetChildren()) do if child.Name == "A_Header_Farm" or child.Name == "A_Row_Farm" then child:Destroy() end end
@@ -901,7 +878,7 @@ registerRight("Home", function(scroll)
     local rowStroke = Instance.new("UIStroke", row); rowStroke.Thickness = 2.2; rowStroke.Color = THEME.GREEN; rowStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
     local label = Instance.new("TextLabel", row)
-    label.BackgroundTransparency = 1; label.Size = UDim2.new(1, -160, 1, 0); label.Position = UDim2.new(0, 16, 0, 0); label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Bandit Farm (Smooth v3)"
+    label.BackgroundTransparency = 1; label.Size = UDim2.new(1, -160, 1, 0); label.Position = UDim2.new(0, 16, 0, 0); label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Bandit Farm (Safe Reset)"
 
     local sw = Instance.new("Frame", row)
     sw.AnchorPoint = Vector2.new(1, 0.5); sw.Position = UDim2.new(1, -12, 0.5, 0); sw.Size = UDim2.fromOffset(52, 26); sw.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
@@ -925,14 +902,29 @@ registerRight("Home", function(scroll)
         farmLevelAuto = not farmLevelAuto
         SaveSet("AutoFarmState", farmLevelAuto)
         updateVisual(farmLevelAuto)
+        
+        -- ### ส่วนสำคัญ: ล้างค่าทุกอย่างเมื่อปิดฟาร์ม ###
         if not farmLevelAuto then
             pcall(function()
                 local char = LP.Character
-                local hrp = char.HumanoidRootPart
-                hrp.Anchored = false
-                char.Humanoid.PlatformStand = false
-                if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly:Destroy() end
-                if hrp:FindFirstChild("UFO_Gyro") then hrp.UFO_Gyro:Destroy() end
+                local hrp = char:FindFirstChild("HumanoidRootPart")
+                local hum = char:FindFirstChildOfClass("Humanoid")
+                
+                if hrp then
+                    hrp.Anchored = false -- ปลดล็อคตัวละคร
+                    if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly:Destroy() end
+                    if hrp:FindFirstChild("UFO_Gyro") then hrp.UFO_Gyro:Destroy() end
+                end
+                
+                if hum then
+                    hum.PlatformStand = false -- คืนค่าให้กลับมาเดินได้
+                end
+
+                -- คืนค่า CanCollide ให้ชิ้นส่วนร่างกาย
+                for _, p in ipairs(char:GetDescendants()) do
+                    if p:IsA("BasePart") then p.CanCollide = true end
+                    if p:IsA("ParticleEmitter") or p:IsA("Trail") then p.Enabled = true end
+                end
             end)
         end
     end)
