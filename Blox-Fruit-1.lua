@@ -719,7 +719,7 @@ registerRight("Settings", function(scroll) end)
     local posFarm = Vector3.new(1193.877, 44.298, 1614.491)
 
     ------------------------------------------------------------------------
-    -- [3] ฟังก์ชันช่วยเหลือ (ปรับปรุงใหม่)
+    -- [3] ฟังก์ชันช่วยเหลือ (ปรับปรุงการคืนค่า)
     ------------------------------------------------------------------------
     
     local function isQuestActive()
@@ -737,14 +737,14 @@ registerRight("Settings", function(scroll) end)
         game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer(unpack(args))
     end
 
-    -- ฟังก์ชันคืนค่าตัวละครให้กลับเป็นปกติ (ป้องกันตัวละครสั้น/เดินไม่ได้)
+    -- ฟังก์ชันคืนค่าตัวละครให้กลับเป็นปกติ (ลงพื้นทันที + ท่าเดินกลับมา)
     local function resetCharacterStatus()
         local char = LP.Character
         if char then
             local hum = char:FindFirstChildOfClass("Humanoid")
             local hrp = char:FindFirstChild("HumanoidRootPart")
             
-            -- คืนค่าสถานะการชนกัน
+            -- คืนค่าการชนกันทันที
             for _, v in ipairs(char:GetDescendants()) do
                 if v:IsA("BasePart") then
                     v.CanCollide = true
@@ -753,13 +753,19 @@ registerRight("Settings", function(scroll) end)
             
             if hrp then
                 hrp.Anchored = false
+                -- ลบวัตถุที่ใช้บินทั้งหมด
                 if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly:Destroy() end
                 if hrp:FindFirstChild("UFO_Gyro") then hrp.UFO_Gyro:Destroy() end
-                hrp.Velocity = Vector3.new(0,0,0)
+                
+                -- บังคับให้พุ่งลงพื้น (ป้องกันการลอยค้าง)
+                hrp.Velocity = Vector3.new(0, -50, 0) 
             end
             
             if hum then
-                hum:ChangeState(Enum.HumanoidStateType.GettingUp) -- บังคับให้ลุกขึ้นยืน
+                -- รีเซ็ตสถานะเพื่อให้ท่าเดินกลับมา
+                hum:ChangeState(Enum.HumanoidStateType.Landing)
+                task.wait(0.1)
+                hum:ChangeState(Enum.HumanoidStateType.Running)
             end
         end
     end
@@ -772,8 +778,10 @@ registerRight("Settings", function(scroll) end)
 
         local dist = (hrp.Position - targetPos).Magnitude
         
-        -- ปิดท่าเดินขณะบิน
-        hum:ChangeState(Enum.HumanoidStateType.Physics)
+        -- ขณะบินใช้ Physics เพื่อประหยัดทรัพยากรและไม่ส่าย
+        if hum:GetState() ~= Enum.HumanoidStateType.Physics then
+            hum:ChangeState(Enum.HumanoidStateType.Physics)
+        end
 
         if dist > 5 then
             hrp.Anchored = false
@@ -785,12 +793,13 @@ registerRight("Settings", function(scroll) end)
                 local bg = Instance.new("BodyGyro", hrp)
                 bg.Name = "UFO_Gyro"
                 bg.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
-                bg.CFrame = hrp.CFrame
+                bg.D = 100 -- ลดการสั่น
             end
             hrp.CFrame = CFrame.new(hrp.Position, targetPos)
             hrp.UFO_Fly.Velocity = (targetPos - hrp.Position).Unit * 125
+            hrp.UFO_Gyro.CFrame = CFrame.new(hrp.Position, targetPos)
         else
-            -- ถึงแล้วล็อคให้นิ่ง
+            -- เมื่อถึงจุดหมาย ล็อคค้างไว้นิ่งๆ บนอากาศ
             if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly.Velocity = Vector3.new(0,0,0) end
             hrp.CFrame = CFrame.new(targetPos)
             hrp.Anchored = true 
@@ -824,23 +833,20 @@ registerRight("Settings", function(scroll) end)
                             if distToNPC > 5 then
                                 flyToLocation(posNPC)
                             else
-                                resetCharacterStatus() -- คืนค่าก่อนคุย NPC
+                                resetCharacterStatus()
                                 talkToNPC()
                                 task.wait(0.5)
                             end
                         end
                     end
                 end)
-            else
-                -- ถ้าปิดสวิตช์ ให้รัน Reset ทันทีครั้งเดียว
-                resetCharacterStatus()
             end
             task.wait()
         end
     end)
 
     ------------------------------------------------------------------------
-    -- [5] การสร้าง UI (Model A V1 แบบยาว)
+    -- [5] การสร้าง UI (Model A V1 แบบยาว ไม่ย่อ)
     ------------------------------------------------------------------------
     local THEME = {
         GREEN = Color3.fromRGB(25, 255, 125),
@@ -888,7 +894,9 @@ registerRight("Settings", function(scroll) end)
         farmLevelAuto = not farmLevelAuto
         SaveSet("AutoFarmState", farmLevelAuto)
         updateVisual(farmLevelAuto)
-        if not farmLevelAuto then resetCharacterStatus() end
+        if not farmLevelAuto then 
+            resetCharacterStatus() 
+        end
     end)
 
     updateVisual(farmLevelAuto)
