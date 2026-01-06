@@ -725,11 +725,12 @@ registerRight("Home", function(scroll)
         if not char or not farmLevelAuto then return end
         local combat = LP.Backpack:FindFirstChild("Combat") or char:FindFirstChild("Combat")
         if combat and combat.Parent ~= char then 
-            char.Humanoid:EquipTool(combat)
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum then hum:EquipTool(combat) end
         end
     end
 
-    -- [Loop 1] Noclip & Bring Mobs
+    -- [Loop 1] Noclip & Bring Mobs (ชุดเดิม)
     RunService.Stepped:Connect(function()
         if not farmLevelAuto then return end
         local char = LP.Character
@@ -739,6 +740,7 @@ registerRight("Home", function(scroll)
                 if p:IsA("BasePart") then p.CanCollide = false end
             end
             if isQuestActive() then
+                if sethiddenproperty then sethiddenproperty(LP, "SimulationRadius", math.huge) end
                 local enemies = workspace:FindFirstChild("Enemies")
                 if enemies then
                     for _, v in ipairs(enemies:GetChildren()) do
@@ -752,31 +754,22 @@ registerRight("Home", function(scroll)
         end
     end)
 
-    -- [Loop 2] Aura Damage & Attack (กลับมาดุดันเหมือนเดิม)
+    -- [Loop 2] Aura Attack (กลับไปใช้ Logic แรกที่คุณพอใจ)
     task.spawn(function()
         while true do
             if farmLevelAuto then
-                pcall(function()
-                    local char = LP.Character
-                    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
-                    equipCombat()
-                    
-                    if isQuestActive() then
+                equipCombat()
+                if isQuestActive() then
+                    pcall(function()
                         local netRE = game:GetService("ReplicatedStorage"):WaitForChild("Modules"):WaitForChild("Net")
-                        
-                        -- ต่อยลม (เพื่อให้เห็นท่าทางและเอฟเฟค)
                         netRE:WaitForChild("RE/RegisterAttack"):FireServer(0.5)
-                        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
-                        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
-
-                        -- ระบบออร่าดาเมจ
+                        
                         local enemiesFolder = workspace:FindFirstChild("Enemies")
                         if enemiesFolder then
                             for _, v in ipairs(enemiesFolder:GetChildren()) do
                                 if v.Name == targetName and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
                                     local eHrp = v:FindFirstChild("HumanoidRootPart")
-                                    -- ดาเมจจะเข้าเมื่อมอนสเตอร์อยู่ในจุดฟาร์ม
-                                    if eHrp and (eHrp.Position - posGround).Magnitude < 50 then
+                                    if eHrp and (eHrp.Position - posGround).Magnitude < auraRange then
                                         task.spawn(function()
                                             netRE:WaitForChild("RE/RegisterHit"):FireServer(v:FindFirstChild("LeftHand") or eHrp, {}, "989f0945")
                                         end)
@@ -784,14 +777,16 @@ registerRight("Home", function(scroll)
                                 end
                             end
                         end
-                    end
-                end)
+                        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+                        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+                    end)
+                end
             end
-            task.wait(0.1) -- ความเร็วเดิม
+            task.wait(0.1)
         end
     end)
 
-    -- [Loop 3] Movement & Cleanup
+    -- [Loop 3] Movement (คืนค่าได้ทันที)
     task.spawn(function()
         while true do
             if farmLevelAuto then
@@ -803,15 +798,16 @@ registerRight("Home", function(scroll)
                     
                     hum.PlatformStand = true
                     local targetPos = isQuestActive() and posFarm or posNPC
+                    local dist = (hrp.Position - targetPos).Magnitude
                     
-                    if (hrp.Position - targetPos).Magnitude > 5 then
+                    if dist > 5 then
                         hrp.Anchored = false
                         local bv = hrp:FindFirstChild("UFO_Fly") or Instance.new("BodyVelocity", hrp)
-                        bv.Name = "UFO_Fly"; bv.MaxForce = Vector3.new(4e5, 4e5, 4e5)
+                        bv.Name = "UFO_Fly"; bv.MaxForce = Vector3.new(400000, 400000, 400000)
                         bv.Velocity = (targetPos - hrp.Position).Unit * 185
                         
                         local bg = hrp:FindFirstChild("UFO_Gyro") or Instance.new("BodyGyro", hrp)
-                        bg.Name = "UFO_Gyro"; bg.MaxTorque = Vector3.new(4e5, 4e5, 4e5)
+                        bg.Name = "UFO_Gyro"; bg.MaxTorque = Vector3.new(400000, 400000, 400000)
                         bg.CFrame = CFrame.new(hrp.Position, targetPos)
                     else
                         if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly:Destroy() end
@@ -822,24 +818,16 @@ registerRight("Home", function(scroll)
                         
                         if not isQuestActive() then
                             game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("StartQuest", "BanditQuest1", 1)
+                            task.wait(0.5)
                         end
                     end
                 end)
             else
-                -- **ระบบคืนค่าอัตโนมัติ (หยุดบินทันทีเมื่อปิด)**
+                -- แก้ไขจุดเดินไม่ได้: ให้หยุดการค้างเมื่อปิดสวิตช์
                 pcall(function()
-                    local char = LP.Character
-                    if char then
-                        local hrp = char:FindFirstChild("HumanoidRootPart")
-                        local hum = char:FindFirstChildOfClass("Humanoid")
-                        if hrp and hrp.Anchored then
-                            hrp.Anchored = false
-                            if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly:Destroy() end
-                            if hrp:FindFirstChild("UFO_Gyro") then hrp.UFO_Gyro:Destroy() end
-                        end
-                        if hum and hum.PlatformStand then
-                            hum.PlatformStand = false
-                            hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+                    if LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
+                        if LP.Character.HumanoidRootPart.Anchored then
+                            LP.Character.HumanoidRootPart.Anchored = false
                         end
                     end
                 end)
@@ -848,7 +836,7 @@ registerRight("Home", function(scroll)
         end
     end)
 
-    -- [UI Section]
+    -- [UI Section] ชุดเดิม
     local THEME = { GREEN = Color3.fromRGB(25, 255, 125), RED = Color3.fromRGB(255, 40, 40), WHITE = Color3.fromRGB(255, 255, 255), BLACK = Color3.fromRGB(0, 0, 0) }
     for _, child in ipairs(scroll:GetChildren()) do if child.Name == "A_Row_Farm" then child:Destroy() end end
 
@@ -859,7 +847,7 @@ registerRight("Home", function(scroll)
 
     local label = Instance.new("TextLabel", row)
     label.BackgroundTransparency = 1; label.Size = UDim2.new(1, -160, 1, 0); label.Position = UDim2.new(0, 16, 0, 0)
-    label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Bandit Farm (Original Power)"
+    label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Bandit Farm (Clean Reset)"
 
     local sw = Instance.new("Frame", row)
     sw.AnchorPoint = Vector2.new(1, 0.5); sw.Position = UDim2.new(1, -12, 0.5, 0); sw.Size = UDim2.fromOffset(52, 26); sw.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
@@ -887,15 +875,22 @@ registerRight("Home", function(scroll)
         if not farmLevelAuto then
             pcall(function()
                 local char = LP.Character
-                if char then
-                    for _, p in ipairs(char:GetDescendants()) do
-                        if p:IsA("BasePart") then p.CanCollide = true end
-                    end
-                    local hum = char:FindFirstChildOfClass("Humanoid")
-                    if hum then 
-                        hum.PlatformStand = false
-                        hum.Jump = true
-                    end
+                local hrp = char:FindFirstChild("HumanoidRootPart")
+                local hum = char:FindFirstChildOfClass("Humanoid")
+                
+                if hrp then
+                    hrp.Anchored = false
+                    if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly:Destroy() end
+                    if hrp:FindFirstChild("UFO_Gyro") then hrp.UFO_Gyro:Destroy() end
+                end
+                
+                if hum then
+                    hum.PlatformStand = false
+                    hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+                end
+
+                for _, p in ipairs(char:GetDescendants()) do
+                    if p:IsA("BasePart") then p.CanCollide = true end
                 end
             end)
         end
