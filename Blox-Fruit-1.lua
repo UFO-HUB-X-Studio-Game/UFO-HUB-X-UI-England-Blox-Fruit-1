@@ -752,28 +752,34 @@ registerRight("Home", function(scroll)
         end
     end)
 
-    -- [Loop 2] Aura Attack (ทำงานเมื่อเปิดเท่านั้น)
+    -- [Loop 2] Aura Damage & Attack (กลับมาดุดันเหมือนเดิม)
     task.spawn(function()
         while true do
             if farmLevelAuto then
                 pcall(function()
                     local char = LP.Character
-                    if not char then return end
+                    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
                     equipCombat()
                     
                     if isQuestActive() then
                         local netRE = game:GetService("ReplicatedStorage"):WaitForChild("Modules"):WaitForChild("Net")
-                        -- ส่งสัญญาณโจมตี (ทำให้มีเอฟเฟคและท่าทาง)
-                        netRE:WaitForChild("RE/RegisterAttack"):FireServer(0.5)
                         
-                        -- Aura Damage (ทำดาเมจมอนรอบตัว)
+                        -- ต่อยลม (เพื่อให้เห็นท่าทางและเอฟเฟค)
+                        netRE:WaitForChild("RE/RegisterAttack"):FireServer(0.5)
+                        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+                        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+
+                        -- ระบบออร่าดาเมจ
                         local enemiesFolder = workspace:FindFirstChild("Enemies")
                         if enemiesFolder then
                             for _, v in ipairs(enemiesFolder:GetChildren()) do
                                 if v.Name == targetName and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
                                     local eHrp = v:FindFirstChild("HumanoidRootPart")
-                                    if eHrp and (eHrp.Position - posGround).Magnitude < auraRange then
-                                        netRE:WaitForChild("RE/RegisterHit"):FireServer(v:FindFirstChild("LeftHand") or eHrp, {}, "989f0945")
+                                    -- ดาเมจจะเข้าเมื่อมอนสเตอร์อยู่ในจุดฟาร์ม
+                                    if eHrp and (eHrp.Position - posGround).Magnitude < 50 then
+                                        task.spawn(function()
+                                            netRE:WaitForChild("RE/RegisterHit"):FireServer(v:FindFirstChild("LeftHand") or eHrp, {}, "989f0945")
+                                        end)
                                     end
                                 end
                             end
@@ -781,11 +787,11 @@ registerRight("Home", function(scroll)
                     end
                 end)
             end
-            task.wait(0.12) -- ปรับความเร็วให้พอดีกับ Animation
+            task.wait(0.1) -- ความเร็วเดิม
         end
     end)
 
-    -- [Loop 3] Movement (หยุดทันทีเมื่อปิด)
+    -- [Loop 3] Movement & Cleanup
     task.spawn(function()
         while true do
             if farmLevelAuto then
@@ -820,22 +826,21 @@ registerRight("Home", function(scroll)
                     end
                 end)
             else
-                -- **ระบบคืนค่า 100% เมื่อปิดสวิตช์**
+                -- **ระบบคืนค่าอัตโนมัติ (หยุดบินทันทีเมื่อปิด)**
                 pcall(function()
                     local char = LP.Character
-                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
-                    local hum = char and char:FindFirstChildOfClass("Humanoid")
-                    
-                    if hrp and hrp.Anchored then
-                        hrp.Anchored = false
-                        if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly:Destroy() end
-                        if hrp:FindFirstChild("UFO_Gyro") then hrp.UFO_Gyro:Destroy() end
-                    end
-                    
-                    if hum and hum.PlatformStand then
-                        hum.PlatformStand = false
-                        hum.Sit = false
-                        hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+                    if char then
+                        local hrp = char:FindFirstChild("HumanoidRootPart")
+                        local hum = char:FindFirstChildOfClass("Humanoid")
+                        if hrp and hrp.Anchored then
+                            hrp.Anchored = false
+                            if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly:Destroy() end
+                            if hrp:FindFirstChild("UFO_Gyro") then hrp.UFO_Gyro:Destroy() end
+                        end
+                        if hum and hum.PlatformStand then
+                            hum.PlatformStand = false
+                            hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+                        end
                     end
                 end)
             end
@@ -854,7 +859,7 @@ registerRight("Home", function(scroll)
 
     local label = Instance.new("TextLabel", row)
     label.BackgroundTransparency = 1; label.Size = UDim2.new(1, -160, 1, 0); label.Position = UDim2.new(0, 16, 0, 0)
-    label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Bandit Farm + Aura (Fixed)"
+    label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Bandit Farm (Original Power)"
 
     local sw = Instance.new("Frame", row)
     sw.AnchorPoint = Vector2.new(1, 0.5); sw.Position = UDim2.new(1, -12, 0.5, 0); sw.Size = UDim2.fromOffset(52, 26); sw.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
@@ -880,7 +885,6 @@ registerRight("Home", function(scroll)
         updateVisual(farmLevelAuto)
         
         if not farmLevelAuto then
-            -- ทลาย Noclip และคืนค่าการชนทันทีที่กดปิด
             pcall(function()
                 local char = LP.Character
                 if char then
@@ -889,8 +893,8 @@ registerRight("Home", function(scroll)
                     end
                     local hum = char:FindFirstChildOfClass("Humanoid")
                     if hum then 
-                        hum.PlatformStand = false 
-                        hum.Jump = true -- บังคับกระโดดเพื่อรีเซ็ต Physics
+                        hum.PlatformStand = false
+                        hum.Jump = true
                     end
                 end
             end)
