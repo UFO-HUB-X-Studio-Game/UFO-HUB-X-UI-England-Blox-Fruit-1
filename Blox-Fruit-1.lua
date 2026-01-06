@@ -713,8 +713,8 @@ registerRight("Home", function(scroll)
     ------------------------------------------------------------------------
     local farmLevelAuto = SaveGet("AutoFarmStateJungle", false)
     local posNPC = Vector3.new(-1601.473, 36.978, 152.508)
-    local posFarm = Vector3.new(-1688.694, 53.973, -93.090) 
-    local posGround = Vector3.new(-1688.701, 22.892, -93.091) 
+    local posFarm = Vector3.new(-1688.694, 53.973, -93.090) -- พิกัดตัวละครใหม่
+    local posGround = Vector3.new(-1688.701, 22.892, -93.091) -- พิกัดดึงมอนใหม่
     local auraRange = 350
     local targetName = "Monkey"
 
@@ -770,7 +770,6 @@ registerRight("Home", function(scroll)
             for _, v in ipairs(enemiesFolder:GetChildren()) do
                 if v.Name == targetName and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
                     local eHrp = v:FindFirstChild("HumanoidRootPart")
-                    -- ใช้ระยะจากจุดดึง (posGround) เพื่อโจมตี
                     if eHrp and (eHrp.Position - posGround).Magnitude < auraRange then
                         task.spawn(function()
                             netRE:WaitForChild("RE/RegisterHit"):FireServer(v:FindFirstChild("LeftHand") or eHrp, {}, "989f0945")
@@ -784,18 +783,14 @@ registerRight("Home", function(scroll)
     end
 
     ------------------------------------------------------------------------
-    -- [4] LOOP การทำงาน (จัดการมอนสเตอร์สถานะพิเศษ)
+    -- [4] LOOP การทำงาน
     ------------------------------------------------------------------------
     
     RunService.Stepped:Connect(function()
         if farmLevelAuto then
-            -- ปิด Dialogue และตั้ง SimulationRadius
             pcall(function()
                 if LP.PlayerGui.Main.Dialogue.Visible then
                     LP.PlayerGui.Main.Dialogue.Visible = false
-                end
-                if sethiddenproperty then 
-                    sethiddenproperty(LP, "SimulationRadius", math.huge) 
                 end
             end)
 
@@ -805,7 +800,6 @@ registerRight("Home", function(scroll)
                 local questOn = isQuestActive()
                 local distToNPC = hrp and (hrp.Position - posNPC).Magnitude or 999
 
-                -- Noclip ตัวละคร
                 for _, p in ipairs(char:GetDescendants()) do
                     if p:IsA("BasePart") then p.CanCollide = false end
                     if (distToNPC < 30 or not questOn) and (p:IsA("ParticleEmitter") or p:IsA("Trail")) then
@@ -813,36 +807,21 @@ registerRight("Home", function(scroll)
                     end
                 end
 
-                -- ระบบดึงมอนสเตอร์ และ อัปเกรดสถานะ (จัดการไวที่สุดผ่าน Stepped)
+                for _, v in pairs(workspace:GetChildren()) do
+                    if v.Name == "Fx" or v.Name == "Effect" or v.Name == "Particles" then v:Destroy() end
+                end
+
                 if questOn then
+                    if sethiddenproperty then sethiddenproperty(LP, "SimulationRadius", math.huge) end
                     local enemies = workspace:FindFirstChild("Enemies")
                     if enemies then
                         for _, v in ipairs(enemies:GetChildren()) do
-                            if v.Name == targetName and v:FindFirstChild("HumanoidRootPart") and v:FindFirstChild("Humanoid") then
-                                local mHrp = v.HumanoidRootPart
-                                local mHum = v.Humanoid
-
-                                -- อัปเกรดสถานะมอนสเตอร์
-                                mHrp.CanCollide = false
-                                mHrp.Size = Vector3.new(60, 60, 60)
-                                mHrp.Transparency = 1
-                                mHrp.CFrame = CFrame.new(posGround) -- ดึงมาใต้ตีนทันที
-                                
-                                mHum.WalkSpeed = 0
-                                mHum.JumpPower = 0
-                                
-                                -- เช็คเลือดถ้าตายให้รีเซ็ตขนาด (เผื่อบั๊กมอนเกิดใหม่ตัวใหญ่ค้าง)
-                                if mHum.Health <= 0 then
-                                    mHrp.Size = Vector3.new(2, 2, 1)
-                                end
+                            if v.Name == targetName and v:FindFirstChild("HumanoidRootPart") then
+                                v.HumanoidRootPart.CanCollide = false
+                                v.HumanoidRootPart.CFrame = CFrame.new(posGround)
                             end
                         end
                     end
-                end
-
-                -- ลบ Fx ทิ้ง
-                for _, v in pairs(workspace:GetChildren()) do
-                    if v.Name == "Fx" or v.Name == "Effect" or v.Name == "Particles" then v:Destroy() end
                 end
             end
         end
@@ -911,7 +890,7 @@ registerRight("Home", function(scroll)
     local rowStroke = Instance.new("UIStroke", row); rowStroke.Thickness = 2.2; rowStroke.Color = THEME.GREEN; rowStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
     local label = Instance.new("TextLabel", row)
-    label.BackgroundTransparency = 1; label.Size = UDim2.new(1, -160, 1, 0); label.Position = UDim2.new(0, 16, 0, 0); label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Monkey Farm (Hitbox & Anti-Flee)"
+    label.BackgroundTransparency = 1; label.Size = UDim2.new(1, -160, 1, 0); label.Position = UDim2.new(0, 16, 0, 0); label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Monkey Farm (Updated Pos)"
 
     local sw = Instance.new("Frame", row)
     sw.AnchorPoint = Vector2.new(1, 0.5); sw.Position = UDim2.new(1, -12, 0.5, 0); sw.Size = UDim2.fromOffset(52, 26); sw.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
