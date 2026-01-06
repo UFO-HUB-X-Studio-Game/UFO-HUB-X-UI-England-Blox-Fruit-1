@@ -721,7 +721,6 @@ registerRight("Home", function(scroll)
     local oldBrightness = Lighting.Brightness
     local oldShadows = Lighting.GlobalShadows
     
-    -- ตัวแปรสถานะการพักเครื่อง
     local isResting = false 
 
     ------------------------------------------------------------------------
@@ -747,18 +746,22 @@ registerRight("Home", function(scroll)
         end)
     end
 
-    local function stopAnimations()
-        local char = LP.Character
-        if char and char:FindFirstChild("Humanoid") then
-            for _, v in pairs(char.Humanoid:GetPlayingAnimationTracks()) do
-                v:Stop()
+    -- ฟังก์ชันหยุดท่าทางตัวละครทั้งหมด
+    local function forceStopAnimations()
+        pcall(function()
+            local char = LP.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            if hum then
+                for _, track in pairs(hum:GetPlayingAnimationTracks()) do
+                    track:Stop(0)
+                end
             end
-        end
+        end)
     end
 
     local function syncAttackAll()
         local char = LP.Character
-        if not char or not farmLevelAuto or not isQuestActive() or isResting then return end -- หยุดตีตอนพัก
+        if not char or not farmLevelAuto or not isQuestActive() or isResting then return end 
         
         local hrp = char:FindFirstChild("HumanoidRootPart")
         if not hrp then return end
@@ -841,17 +844,18 @@ registerRight("Home", function(scroll)
         end
     end)
 
-    -- [[ ส่วนที่แก้ไข: ถึงเป้าหมายแล้วค้างไว้ 3 วินาทีเพื่อแก้อาการสั่น ]]
+    -- [[ ส่วนที่แก้ไข: ลบ Animation และใช้ Gyro ล็อคตัวละครบินแนวตรง ]]
     task.spawn(function()
         while true do
             if farmLevelAuto then
                 pcall(function()
                     local char = LP.Character
                     local hrp = char:FindFirstChild("HumanoidRootPart")
-                    local hum = char:FindFirstChild("Humanoid")
+                    local hum = char:FindFirstChildOfClass("Humanoid")
                     if not hrp or not hum or isResting then return end
                     
-                    stopAnimations()
+                    -- บังคับหยุดท่าทางทุกครั้งใน Loop
+                    forceStopAnimations()
                     hum.PlatformStand = true
 
                     local targetPos = isQuestActive() and posFarm or posNPC
@@ -859,24 +863,32 @@ registerRight("Home", function(scroll)
 
                     if dist > 2 then
                         hrp.Anchored = false
+                        
+                        -- แรงส่ง (Velocity)
                         local fly = hrp:FindFirstChild("UFO_Fly") or Instance.new("BodyVelocity", hrp)
                         fly.Name = "UFO_Fly"; fly.MaxForce = Vector3.new(9e9, 9e9, 9e9)
                         fly.Velocity = (targetPos - hrp.Position).Unit * 185
+                        
+                        -- ตัวควบคุมทิศทาง (Gyro) ล็อคให้หน้าหันไปและตัวตั้งตรง
+                        local gyro = hrp:FindFirstChild("UFO_Gyro") or Instance.new("BodyGyro", hrp)
+                        gyro.Name = "UFO_Gyro"; gyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+                        gyro.CFrame = CFrame.new(hrp.Position, targetPos)
+
                         hrp.CFrame = CFrame.new(hrp.Position, targetPos)
                     else
-                        -- [[ ถึงที่หมาย: ทำการหยุดนิ่ง 3 วินาที ]]
+                        -- ถึงที่หมาย: ลบฟิสิกส์ทั้งหมดทิ้ง
                         if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly:Destroy() end
+                        if hrp:FindFirstChild("UFO_Gyro") then hrp.UFO_Gyro:Destroy() end
+                        
                         hrp.Velocity = Vector3.zero
                         hrp.RotVelocity = Vector3.zero
                         hrp.CFrame = CFrame.new(targetPos)
                         hrp.Anchored = true 
                         
-                        -- รับเควส (กรณีอยู่หน้า NPC)
                         if not isQuestActive() then
                             game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("StartQuest", "BanditQuest1", 1)
                         end
                         
-                        -- ล็อคค้างไว้ 3 วินาที
                         isResting = true
                         task.wait(3)
                         isResting = false
@@ -899,7 +911,7 @@ registerRight("Home", function(scroll)
     local rowStroke = Instance.new("UIStroke", row); rowStroke.Thickness = 2.2; rowStroke.Color = THEME.GREEN; rowStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
     local label = Instance.new("TextLabel", row)
-    label.BackgroundTransparency = 1; label.Size = UDim2.new(1, -160, 1, 0); label.Position = UDim2.new(0, 16, 0, 0); label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Bandit Farm (Wait 3s at Target)"
+    label.BackgroundTransparency = 1; label.Size = UDim2.new(1, -160, 1, 0); label.Position = UDim2.new(0, 16, 0, 0); label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Bandit Farm (Straight Fly & No Anim)"
 
     local sw = Instance.new("Frame", row)
     sw.AnchorPoint = Vector2.new(1, 0.5); sw.Position = UDim2.new(1, -12, 0.5, 0); sw.Size = UDim2.fromOffset(52, 26); sw.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
@@ -927,7 +939,9 @@ registerRight("Home", function(scroll)
             isResting = false
             pcall(function()
                 local char = LP.Character
-                if char and char:FindFirstChild("Humanoid") then
+                if char then
+                    if char:FindFirstChild("HumanoidRootPart") then char.HumanoidRootPart.Anchored = false end
+                    if char:FindFirstChildOfClass("Humanoid") then char:FindFirstChildOfClass("Humanoid").PlatformStand = false end
                     char.Humanoid.Health = 0
                 end
             end)
