@@ -728,6 +728,16 @@ registerRight("Settings", function(scroll) end)
         return ok and active
     end
 
+    -- หยุดท่าทางทั้งหมด (แก้ปัญหาเท้าวิ่งขณะบิน)
+    local function stopAnimations()
+        local char = LP.Character
+        if char and char:FindFirstChild("Humanoid") then
+            for _, v in pairs(char.Humanoid:GetPlayingAnimationTracks()) do
+                v:Stop()
+            end
+        end
+    end
+
     local function equipCombat()
         local char = LP.Character
         if not char then return end
@@ -757,24 +767,6 @@ registerRight("Settings", function(scroll) end)
         VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
     end
 
-    local function bringTargetOnly(v)
-        if v.Name == targetName then
-            local hrp = v:FindFirstChild("HumanoidRootPart")
-            local hum = v:FindFirstChild("Humanoid")
-            if hrp and hum then
-                hrp.Size = Vector3.new(60, 60, 60)
-                hrp.CanCollide = false
-                hum.WalkSpeed = 0
-                hum.JumpPower = 0
-                hrp.CFrame = CFrame.new(posGround)
-                if not hrp:FindFirstChild("ForceStatic") then
-                    local bv = Instance.new("BodyVelocity", hrp)
-                    bv.Name = "ForceStatic"; bv.MaxForce = Vector3.new(9e9, 9e9, 9e9); bv.Velocity = Vector3.zero
-                end
-            end
-        end
-    end
-
     local function toggleCleanMode(on)
         if on then
             Lighting.Brightness = 0
@@ -786,20 +778,24 @@ registerRight("Settings", function(scroll) end)
     end
 
     ------------------------------------------------------------------------
-    -- [4] LOOP การทำงาน (Noclip & Effect Mute)
+    -- [4] LOOP การทำงาน (Noclip & Effect Cleaner)
     ------------------------------------------------------------------------
     
     RunService.Stepped:Connect(function()
         if farmLevelAuto then
             local char = LP.Character
             if char then
+                -- ทะลุแมพ 100%
                 for _, p in ipairs(char:GetDescendants()) do
                     if p:IsA("BasePart") then p.CanCollide = false end
                 end
-                -- ปิดเอฟเฟกต์การโจมตี/เลเวลอัป แบบ 100%
-                local fx = workspace:FindFirstChild("Fx") or workspace:FindFirstChild("Effects")
-                if fx then
-                    for _, v in ipairs(fx:GetChildren()) do v:Destroy() end
+
+                -- ปิดเอฟเฟกต์แบบ 100% (ลบทุกอย่างที่เกิดใหม่)
+                for _, v in pairs(workspace:GetChildren()) do
+                    if v.Name == "Fx" or v.Name == "Effect" or v.Name == "Particles" then v:Destroy() end
+                end
+                for _, v in pairs(game:GetService("ReplicatedStorage"):GetChildren()) do
+                    if v:IsA("ParticleEmitter") then v.Enabled = false end
                 end
                 
                 if isQuestActive() then
@@ -807,7 +803,10 @@ registerRight("Settings", function(scroll) end)
                     local enemies = workspace:FindFirstChild("Enemies")
                     if enemies then
                         for _, v in ipairs(enemies:GetChildren()) do
-                            bringTargetOnly(v)
+                            if v.Name == targetName and v:FindFirstChild("HumanoidRootPart") then
+                                v.HumanoidRootPart.CanCollide = false
+                                v.HumanoidRootPart.CFrame = CFrame.new(posGround)
+                            end
                         end
                     end
                 end
@@ -818,16 +817,13 @@ registerRight("Settings", function(scroll) end)
     task.spawn(function()
         while true do
             if farmLevelAuto and isQuestActive() then
-                local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-                if hrp and (hrp.Position - posFarm).Magnitude < 40 then
-                    syncAttackAll()
-                end
+                syncAttackAll()
             end
             task.wait(0.01)
         end
     end)
 
-    -- ลูปเคลื่อนที่ (บินตรงสวยงาม + ลงจอดเป๊ะ)
+    -- ลูปเคลื่อนที่ (แก้ท่าวิ่ง + ลงจอดเป๊ะ)
     task.spawn(function()
         while true do
             if farmLevelAuto then
@@ -836,16 +832,18 @@ registerRight("Settings", function(scroll) end)
                     local hrp = char.HumanoidRootPart
                     local hum = char.Humanoid
                     
+                    stopAnimations() -- หยุดท่าวิ่งทุกเฟรมที่บิน
+                    hum.PlatformStand = true -- บังคับลอย
+
                     if isQuestActive() then
                         local dist = (hrp.Position - posFarm).Magnitude
-                        hum.PlatformStand = true -- ล็อกท่าบิน ไม่ให้ขาขยับ
                         if dist > 5 then
                             hrp.Anchored = false
                             if not hrp:FindFirstChild("UFO_Fly") then
                                 local bv = Instance.new("BodyVelocity", hrp)
                                 bv.Name = "UFO_Fly"; bv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
                             end
-                            hrp.UFO_Fly.Velocity = (posFarm - hrp.Position).Unit * 180
+                            hrp.UFO_Fly.Velocity = (posFarm - hrp.Position).Unit * 185
                             hrp.CFrame = CFrame.new(hrp.Position, posFarm)
                         else
                             if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly.Velocity = Vector3.zero end
@@ -853,19 +851,20 @@ registerRight("Settings", function(scroll) end)
                             hrp.Anchored = true
                         end
                     else
+                        -- ไปรับภารกิจ
                         local distToNPC = (hrp.Position - posNPC).Magnitude
-                        hum.PlatformStand = true -- ล็อกท่าบินตอนไป NPC ด้วย
                         if distToNPC > 3 then
                             hrp.Anchored = false
-                            if not hrp:FindFirstChild("UFO_Fly") then Instance.new("BodyVelocity", hrp).Name = "UFO_Fly" end
-                            hrp.UFO_Fly.MaxForce = Vector3.new(9e9, 9e9, 9e9)
-                            hrp.UFO_Fly.Velocity = (posNPC - hrp.Position).Unit * 180
+                            if not hrp:FindFirstChild("UFO_Fly") then 
+                                local bv = Instance.new("BodyVelocity", hrp)
+                                bv.Name = "UFO_Fly"; bv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+                            end
+                            hrp.UFO_Fly.Velocity = (posNPC - hrp.Position).Unit * 185
                             hrp.CFrame = CFrame.new(hrp.Position, posNPC)
                         else
-                            if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly:Destroy() end
+                            if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly.Velocity = Vector3.zero end
                             hrp.Anchored = true
                             hrp.CFrame = CFrame.new(posNPC)
-                            hum.PlatformStand = false
                             game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("StartQuest", "BanditQuest1", 1)
                             task.wait(0.5)
                         end
@@ -888,7 +887,7 @@ registerRight("Settings", function(scroll) end)
     local rowStroke = Instance.new("UIStroke", row); rowStroke.Thickness = 2.2; rowStroke.Color = THEME.GREEN; rowStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
     local label = Instance.new("TextLabel", row)
-    label.BackgroundTransparency = 1; label.Size = UDim2.new(1, -160, 1, 0); label.Position = UDim2.new(0, 16, 0, 0); label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Bandit Farm Level 1-10"
+    label.BackgroundTransparency = 1; label.Size = UDim2.new(1, -160, 1, 0); label.Position = UDim2.new(0, 16, 0, 0); label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Bandit Farm Fix V2"
 
     local sw = Instance.new("Frame", row)
     sw.AnchorPoint = Vector2.new(1, 0.5); sw.Position = UDim2.new(1, -12, 0.5, 0); sw.Size = UDim2.fromOffset(52, 26); sw.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
@@ -915,9 +914,9 @@ registerRight("Settings", function(scroll) end)
             pcall(function()
                 local char = LP.Character
                 local hrp = char.HumanoidRootPart
-                -- หยุดเด้ง: ล็อคนิ่งๆ ก่อนปลด
-                hrp.UFO_Fly.Velocity = Vector3.zero
+                -- หยุดทันที ไม่ให้เด้ง
                 hrp.Anchored = true
+                if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly.Velocity = Vector3.zero end
                 task.wait(0.1)
                 hrp.Anchored = false
                 char.Humanoid.PlatformStand = false
