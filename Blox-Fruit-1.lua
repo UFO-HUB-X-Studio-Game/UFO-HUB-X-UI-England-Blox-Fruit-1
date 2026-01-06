@@ -796,7 +796,6 @@ registerRight("Home", function(scroll)
     -- [4] LOOP การทำงาน
     ------------------------------------------------------------------------
     
-    -- ลูปดึงมอนสเตอร์ (โครงสร้างเดิมที่ฟาร์มดีที่สุด)
     RunService.Stepped:Connect(function()
         if farmLevelAuto then
             pcall(function()
@@ -827,7 +826,6 @@ registerRight("Home", function(scroll)
         end
     end)
 
-    -- ลูปโจมตี + ถือหมัด
     task.spawn(function()
         while true do
             if farmLevelAuto then
@@ -840,7 +838,7 @@ registerRight("Home", function(scroll)
         end
     end)
 
-    -- ลูปการเคลื่อนที่ (แก้ไขจุดหยุดเพื่อแก้สั่น 100%)
+    -- [[ ส่วนที่แก้ไข: ปรับปรุงการหยุดให้นิ่งสนิท ไม่สั่น ]]
     task.spawn(function()
         while true do
             if farmLevelAuto then
@@ -856,19 +854,19 @@ registerRight("Home", function(scroll)
                     local targetPos = isQuestActive() and posFarm or posNPC
                     local dist = (hrp.Position - targetPos).Magnitude
 
-                    if dist > 3 then
+                    if dist > 1.5 then -- ปรับระยะให้เข้าใกล้ขึ้นเพื่อความแม่นยำ
                         hrp.Anchored = false
                         local fly = hrp:FindFirstChild("UFO_Fly") or Instance.new("BodyVelocity", hrp)
                         fly.Name = "UFO_Fly"; fly.MaxForce = Vector3.new(9e9, 9e9, 9e9)
                         fly.Velocity = (targetPos - hrp.Position).Unit * 185
                         hrp.CFrame = CFrame.new(hrp.Position, targetPos)
                     else
-                        -- [[ แก้สั่น: ถึงที่หมายลบแรงส่งทิ้งทันที ]]
+                        -- เมื่อถึงระยะหยุด: ล้างแรงฟิสิกส์ทิ้งทันทีเพื่อแก้สั่น
                         if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly:Destroy() end
-                        hrp.Velocity = Vector3.zero
-                        hrp.RotVelocity = Vector3.zero
+                        hrp.Velocity = Vector3.new(0, 0, 0)
+                        hrp.RotVelocity = Vector3.new(0, 0, 0)
                         hrp.CFrame = CFrame.new(targetPos)
-                        hrp.Anchored = true
+                        hrp.Anchored = true -- ล็อคตัวให้นิ่งสนิท
                         
                         if not isQuestActive() then
                             game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("StartQuest", "BanditQuest1", 1)
@@ -893,7 +891,7 @@ registerRight("Home", function(scroll)
     local rowStroke = Instance.new("UIStroke", row); rowStroke.Thickness = 2.2; rowStroke.Color = THEME.GREEN; rowStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
     local label = Instance.new("TextLabel", row)
-    label.BackgroundTransparency = 1; label.Size = UDim2.new(1, -160, 1, 0); label.Position = UDim2.new(0, 16, 0, 0); label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Bandit Farm (No Shake & Auto Combat)"
+    label.BackgroundTransparency = 1; label.Size = UDim2.new(1, -160, 1, 0); label.Position = UDim2.new(0, 16, 0, 0); label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Bandit Farm (Fixed Shake)"
 
     local sw = Instance.new("Frame", row)
     sw.AnchorPoint = Vector2.new(1, 0.5); sw.Position = UDim2.new(1, -12, 0.5, 0); sw.Size = UDim2.fromOffset(52, 26); sw.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
