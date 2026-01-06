@@ -706,16 +706,17 @@ registerRight("Settings", function(scroll) end)
     local function SaveSet(k, v) pcall(function() SAVE.set(SCOPE.."/"..k, v) end) end
 
     ------------------------------------------------------------------------
-    -- [2] ตัวแปรและตำแหน่ง (ปรับความสูงเพิ่มขึ้นเพื่อไม่ให้แตะพื้น)
+    -- [2] ตัวแปรตำแหน่ง (เน้นลอยสูงและล็อคเป้า Bandit)
     ------------------------------------------------------------------------
     local farmLevelAuto = SaveGet("AutoFarmState", false)
     local posNPC = Vector3.new(1059.757, 16.398, 1549.047)
-    local posFarm = Vector3.new(1193.877, 55.000, 1614.491) -- ปรับความสูงจาก 44 เป็น 55
+    local posFarm = Vector3.new(1193.877, 60.000, 1614.491) -- ปรับสูงขึ้นเป็น 60 กันบัคติดพื้น
     local posGround = Vector3.new(1193.798, 16.743, 1615.949)
-    local auraRange = 350 -- ระยะออร่า 5 เท่า (70 * 5)
+    local auraRange = 350
+    local targetName = "Bandit" -- ล็อคเป้าหมายเดียวเท่านั้น
 
     ------------------------------------------------------------------------
-    -- [3] ฟังก์ชันระบบ (High-Speed Core)
+    -- [3] ฟังก์ชันระบบ (Sync Damage & Filter)
     ------------------------------------------------------------------------
     
     local function isQuestActive()
@@ -727,140 +728,129 @@ registerRight("Settings", function(scroll) end)
         local char = LP.Character
         if not char then return end
         local combat = char:FindFirstChild("Combat") or LP.Backpack:FindFirstChild("Combat")
-        if combat and combat.Parent ~= char then
-            combat.Parent = char
-        end
+        if combat and combat.Parent ~= char then combat.Parent = char end
     end
 
-    -- ระบบ Turbo Click (ความไว 10 เท่า)
-    local function turboClick()
-        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
-        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
-    end
-
-    -- ระบบ Kill Aura แบบหมู่คณะ (ตีครบทุกตัวจริงๆ)
-    local function instantKillAll()
+    -- ระบบโจมตีแบบกลุ่ม (พร้อมกันทุกตัวจริงๆ)
+    local function syncAttackAll()
         if not farmLevelAuto or not isQuestActive() then return end
-        
         equipCombat()
         
         local netRE = game:GetService("ReplicatedStorage"):WaitForChild("Modules"):WaitForChild("Net")
-        
-        -- ส่งสัญญาณเปิดการโจมตี
-        pcall(function()
-            netRE:WaitForChild("RE/RegisterAttack"):FireServer(0.5)
-        end)
-
         local enemiesFolder = workspace:FindFirstChild("Enemies")
+        
         if enemiesFolder then
-            local allEnemies = enemiesFolder:GetChildren()
-            for i = 1, #allEnemies do
-                local v = allEnemies[i]
-                -- ตรวจสอบชื่อศัตรูและเลือด (ตีทุกตัวที่ชื่อมี Bandit หรือมอนสเตอร์ตัวอื่น)
-                if v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
+            -- ส่งสถานะเปิดการโจมตี 1 ครั้ง (เพื่อลดการส่งข้อมูลซ้ำซ้อน)
+            netRE:WaitForChild("RE/RegisterAttack"):FireServer(0.5)
+            
+            -- ค้นหาและโจมตี Bandit ทุกตัวพร้อมกัน
+            for _, v in ipairs(enemiesFolder:GetChildren()) do
+                -- เช็คชื่อแบบเจาะจงเฉพาะ "Bandit" เท่านั้น
+                if v.Name == targetName and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
                     local hrp = v:FindFirstChild("HumanoidRootPart")
                     if hrp and (hrp.Position - posGround).Magnitude < auraRange then
-                        -- ส่ง Damage ทันทีโดยไม่รอคิว (Parallel Execution)
+                        -- ใช้ spawn เพื่อส่งดาเมจออกไปทันทีโดยไม่รอ Loop ตัวถัดไป
                         task.spawn(function()
-                            pcall(function()
-                                local args = {
-                                    [1] = v:FindFirstChild("LeftHand") or hrp,
-                                    [2] = {},
-                                    [4] = "989f0945"
-                                }
-                                netRE:WaitForChild("RE/RegisterHit"):FireServer(unpack(args))
-                            end)
+                            local args = {
+                                [1] = v:FindFirstChild("LeftHand") or hrp,
+                                [2] = {},
+                                [4] = "989f0945"
+                            }
+                            netRE:WaitForChild("RE/RegisterHit"):FireServer(unpack(args))
                         end)
                     end
                 end
             end
         end
+        -- คลิกหน้าจอจริงด้วยความไวสูง
+        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
     end
 
-    -- ระบบจัดการศัตรูให้มาอยู่จุดเดียวกัน
-    local function bringAndFreeze(v)
-        local hrp = v:FindFirstChild("HumanoidRootPart")
-        local hum = v:FindFirstChild("Humanoid")
-        if hrp and hum then
-            hrp.Size = Vector3.new(60, 60, 60)
-            hrp.CanCollide = false
-            hum.WalkSpeed = 0
-            hum.JumpPower = 0
-            hrp.CFrame = CFrame.new(posGround)
-            
-            if not hrp:FindFirstChild("FreezeForce") then
-                local bv = Instance.new("BodyVelocity", hrp)
-                bv.Name = "FreezeForce"; bv.MaxForce = Vector3.new(9e9, 9e9, 9e9); bv.Velocity = Vector3.zero
+    -- ระบบดึงเฉพาะ Bandit (Strict Mode)
+    local function bringTargetOnly(v)
+        if v.Name == targetName then -- ตรวจสอบชื่อก่อนจัดการเสมอ
+            local hrp = v:FindFirstChild("HumanoidRootPart")
+            local hum = v:FindFirstChild("Humanoid")
+            if hrp and hum then
+                hrp.Size = Vector3.new(60, 60, 60)
+                hrp.CanCollide = false
+                hum.WalkSpeed = 0
+                hum.JumpPower = 0
+                hrp.CFrame = CFrame.new(posGround)
+                
+                if not hrp:FindFirstChild("ForceStatic") then
+                    local bv = Instance.new("BodyVelocity", hrp)
+                    bv.Name = "ForceStatic"; bv.MaxForce = Vector3.new(9e9, 9e9, 9e9); bv.Velocity = Vector3.zero
+                end
             end
         end
     end
 
     ------------------------------------------------------------------------
-    -- [4] LOOP การทำงานหลัก (รันแบบจัดเต็ม)
+    -- [4] LOOP การทำงานหลัก
     ------------------------------------------------------------------------
     
-    -- Loop 1: Noclip + Bring Monster (ทำงานตลอดเวลา)
+    -- ลูปควบคุมร่างกายและดึงมอนสเตอร์
     RunService.Stepped:Connect(function()
         if farmLevelAuto then
             local char = LP.Character
             if char then
-                for _, part in ipairs(char:GetDescendants()) do
-                    if part:IsA("BasePart") then part.CanCollide = false end
+                -- Noclip 100%
+                for _, p in ipairs(char:GetDescendants()) do
+                    if p:IsA("BasePart") then p.CanCollide = false end
                 end
-            end
-            
-            if isQuestActive() then
-                if sethiddenproperty then sethiddenproperty(LP, "SimulationRadius", math.huge) end
-                local enemies = workspace:FindFirstChild("Enemies")
-                if enemies then
-                    for _, v in ipairs(enemies:GetChildren()) do
-                        bringAndFreeze(v)
+                
+                if isQuestActive() then
+                    if sethiddenproperty then sethiddenproperty(LP, "SimulationRadius", math.huge) end
+                    local enemies = workspace:FindFirstChild("Enemies")
+                    if enemies then
+                        for _, v in ipairs(enemies:GetChildren()) do
+                            bringTargetOnly(v) -- ดึงเฉพาะ Bandit
+                        end
                     end
                 end
             end
         end
     end)
 
-    -- Loop 2: ระบบโจมตีความไวสูง (10x Speed)
+    -- ลูปโจมตี (ความเร็ว 10 เท่า)
     task.spawn(function()
         while true do
             if farmLevelAuto and isQuestActive() then
-                local char = LP.Character
-                local hrp = char and char:FindFirstChild("HumanoidRootPart")
-                if hrp and (hrp.Position - posFarm).Magnitude < 30 then
-                    instantKillAll()
-                    turboClick()
+                local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+                if hrp and (hrp.Position - posFarm).Magnitude < 40 then
+                    syncAttackAll()
                 end
             end
-            task.wait(0.01) -- ปรับความไวเป็น 0.01 (10 เท่าจากของเดิม)
+            task.wait(0.01) -- Turbo Speed
         end
     end)
 
-    -- Loop 3: บินและล็อคตำแหน่ง (แก้ตัวละครแตะพื้น)
+    -- ลูปเคลื่อนที่ (เน้นลอยสูงและบินทะลุ)
     task.spawn(function()
         while true do
             if farmLevelAuto then
                 pcall(function()
                     local char = LP.Character
-                    local hrp = char:FindFirstChild("HumanoidRootPart")
-                    local hum = char:FindFirstChildOfClass("Humanoid")
+                    local hrp = char.HumanoidRootPart
+                    local hum = char.Humanoid
                     
                     if isQuestActive() then
                         local dist = (hrp.Position - posFarm).Magnitude
                         if dist > 5 then
-                            hum.PlatformStand = true -- บังคับท่าลอย
+                            hum.PlatformStand = true
                             hrp.Anchored = false
                             if not hrp:FindFirstChild("UFO_Fly") then
                                 local bv = Instance.new("BodyVelocity", hrp)
                                 bv.Name = "UFO_Fly"; bv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
                             end
+                            hrp.UFO_Fly.Velocity = (posFarm - hrp.Position).Unit * 180
                             hrp.CFrame = CFrame.new(hrp.Position, posFarm)
-                            hrp.UFO_Fly.Velocity = (posFarm - hrp.Position).Unit * 175 -- เร่งความเร็วบิน
                         else
-                            -- ล็อคตัวกลางอากาศให้สูงกว่าพื้น
                             if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly.Velocity = Vector3.zero end
                             hrp.CFrame = CFrame.new(posFarm)
-                            hrp.Anchored = true 
+                            hrp.Anchored = true
                         end
                     else
                         -- ไปรับเควส
@@ -869,14 +859,13 @@ registerRight("Settings", function(scroll) end)
                             hrp.Anchored = false
                             if not hrp:FindFirstChild("UFO_Fly") then Instance.new("BodyVelocity", hrp).Name = "UFO_Fly" end
                             hrp.UFO_Fly.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+                            hrp.UFO_Fly.Velocity = (posNPC - hrp.Position).Unit * 180
                             hrp.CFrame = CFrame.new(hrp.Position, posNPC)
-                            hrp.UFO_Fly.Velocity = (posNPC - hrp.Position).Unit * 175
                         else
                             if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly:Destroy() end
                             hrp.Anchored = false
                             hum.PlatformStand = false
-                            local args = {[1] = "StartQuest", [2] = "BanditQuest1", [3] = 1}
-                            game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer(unpack(args))
+                            game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("StartQuest", "BanditQuest1", 1)
                             task.wait(0.5)
                         end
                     end
@@ -887,13 +876,13 @@ registerRight("Settings", function(scroll) end)
     end)
 
     ------------------------------------------------------------------------
-    -- [5] UI Model A V1
+    -- [5] UI
     ------------------------------------------------------------------------
     local THEME = { GREEN = Color3.fromRGB(25, 255, 125), RED = Color3.fromRGB(255, 40, 40), WHITE = Color3.fromRGB(255, 255, 255), BLACK = Color3.fromRGB(0, 0, 0) }
     for _, child in ipairs(scroll:GetChildren()) do if child.Name == "A_Header_Farm" or child.Name == "A_Row_Farm" then child:Destroy() end end
 
     local header = Instance.new("TextLabel", scroll)
-    header.Name = "A_Header_Farm"; header.BackgroundTransparency = 1; header.Size = UDim2.new(1, 0, 0, 36); header.Font = Enum.Font.GothamBold; header.TextSize = 16; header.TextColor3 = THEME.WHITE; header.TextXAlignment = Enum.TextXAlignment.Left; header.Text = "🚜 Ultimate Farm (Multi-Hit)"; header.LayoutOrder = 1
+    header.Name = "A_Header_Farm"; header.BackgroundTransparency = 1; header.Size = UDim2.new(1, 0, 0, 36); header.Font = Enum.Font.GothamBold; header.TextSize = 16; header.TextColor3 = THEME.WHITE; header.TextXAlignment = Enum.TextXAlignment.Left; header.Text = "🚜 Bandit Farm (Pure Sync)"; header.LayoutOrder = 1
 
     local row = Instance.new("Frame", scroll)
     row.Name = "A_Row_Farm"; row.Size = UDim2.new(1, -6, 0, 46); row.BackgroundColor3 = THEME.BLACK; row.LayoutOrder = 2
@@ -924,13 +913,12 @@ registerRight("Settings", function(scroll) end)
         SaveSet("AutoFarmState", farmLevelAuto)
         updateVisual(farmLevelAuto)
         if not farmLevelAuto then
-            local char = LP.Character
-            if char then
-                local hrp = char:FindFirstChild("HumanoidRootPart")
-                if hrp then hrp.Anchored = false; if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly:Destroy() end end
-                local hum = char:FindFirstChildOfClass("Humanoid")
-                if hum then hum.PlatformStand = false end
-            end
+            pcall(function()
+                local char = LP.Character
+                char.HumanoidRootPart.Anchored = false
+                char.Humanoid.PlatformStand = false
+                if char.HumanoidRootPart:FindFirstChild("UFO_Fly") then char.HumanoidRootPart.UFO_Fly:Destroy() end
+            end)
         end
     end)
 
