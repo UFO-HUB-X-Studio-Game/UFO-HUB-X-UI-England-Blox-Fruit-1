@@ -720,13 +720,6 @@ registerRight("Home", function(scroll)
         return ok and active
     end
 
-    local function stopAnimations()
-        local char = LP.Character
-        if char and char:FindFirstChild("Humanoid") then
-            for _, v in pairs(char.Humanoid:GetPlayingAnimationTracks()) do v:Stop() end
-        end
-    end
-
     local function equipCombat()
         local char = LP.Character
         if not char or not farmLevelAuto then return end
@@ -761,28 +754,42 @@ registerRight("Home", function(scroll)
         end
     end)
 
-    -- [Loop 2] Attack
+    -- [Loop 2] Aura Attack (เพิ่มกลับมาแล้ว)
     task.spawn(function()
         while true do
             if farmLevelAuto then
                 equipCombat()
                 if isQuestActive() then
-                    local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-                    if hrp and (hrp.Position - posNPC).Magnitude > 30 then
-                        pcall(function()
-                            local netRE = game:GetService("ReplicatedStorage"):WaitForChild("Modules"):WaitForChild("Net")
-                            netRE:WaitForChild("RE/RegisterAttack"):FireServer(0.5)
-                            VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
-                            VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
-                        end)
-                    end
+                    pcall(function()
+                        local netRE = game:GetService("ReplicatedStorage"):WaitForChild("Modules"):WaitForChild("Net")
+                        netRE:WaitForChild("RE/RegisterAttack"):FireServer(0.5)
+                        
+                        -- ระบบ Aura Damage สแกนมอนสเตอร์รอบๆ
+                        local enemiesFolder = workspace:FindFirstChild("Enemies")
+                        if enemiesFolder then
+                            for _, v in ipairs(enemiesFolder:GetChildren()) do
+                                if v.Name == targetName and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
+                                    local eHrp = v:FindFirstChild("HumanoidRootPart")
+                                    -- ตรวจสอบว่ามอนอยู่ที่จุดฟาร์มหรือไม่
+                                    if eHrp and (eHrp.Position - posGround).Magnitude < auraRange then
+                                        task.spawn(function()
+                                            netRE:WaitForChild("RE/RegisterHit"):FireServer(v:FindFirstChild("LeftHand") or eHrp, {}, "989f0945")
+                                        end)
+                                    end
+                                end
+                            end
+                        end
+
+                        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+                        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+                    end)
                 end
             end
             task.wait(0.1)
         end
     end)
 
-    -- [Loop 3] Movement (Fixed Vibration)
+    -- [Loop 3] Movement
     task.spawn(function()
         while true do
             if farmLevelAuto then
@@ -819,7 +826,6 @@ registerRight("Home", function(scroll)
                     end
                 end)
             else
-                -- ถ้าปิดฟาร์ม ต้องมั่นใจว่า Anchored หลุด
                 pcall(function()
                     if LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
                         LP.Character.HumanoidRootPart.Anchored = false
@@ -841,7 +847,7 @@ registerRight("Home", function(scroll)
 
     local label = Instance.new("TextLabel", row)
     label.BackgroundTransparency = 1; label.Size = UDim2.new(1, -160, 1, 0); label.Position = UDim2.new(0, 16, 0, 0)
-    label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Bandit Farm (Control Fix)"
+    label.Font = Enum.Font.GothamBold; label.TextSize = 13; label.TextColor3 = THEME.WHITE; label.TextXAlignment = Enum.TextXAlignment.Left; label.Text = "Bandit Farm + Aura"
 
     local sw = Instance.new("Frame", row)
     sw.AnchorPoint = Vector2.new(1, 0.5); sw.Position = UDim2.new(1, -12, 0.5, 0); sw.Size = UDim2.fromOffset(52, 26); sw.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
@@ -880,7 +886,6 @@ registerRight("Home", function(scroll)
                 
                 if hum then
                     hum.PlatformStand = false
-                    -- ปลุกตัวละครให้กลับมาคุมได้
                     hum:ChangeState(Enum.HumanoidStateType.GettingUp)
                 end
 
