@@ -691,7 +691,7 @@ end)
 
 registerRight("Home", function(scroll) end)
 registerRight("Settings", function(scroll) end)
---===== UFO HUB X • Home • Level Farm (Progressive Edition) =====
+--===== UFO HUB X • Home • Level Farm (Real-time Level Check) =====
 registerRight("Home", function(scroll)
     local TweenService = game:GetService("TweenService")
     local RunService = game:GetService("RunService")
@@ -700,7 +700,7 @@ registerRight("Home", function(scroll)
     local Lighting = game:GetService("Lighting")
 
     ------------------------------------------------------------------------
-    -- [1] ระบบ SAVE & ข้อมูลเลเวล
+    -- [1] ระบบ SAVE & ฟังก์ชันเช็คเลเวลแม่นยำ
     ------------------------------------------------------------------------
     local SAVE = getgenv().UFOX_SAVE
     local SCOPE = ("AA1/FarmSystem/%d"):format(game.PlaceId)
@@ -708,10 +708,19 @@ registerRight("Home", function(scroll)
     local function SaveSet(k, v) pcall(function() SAVE.set(SCOPE.."/"..k, v) end) end
 
     local farmLevelAuto = SaveGet("AutoFarmState", false)
-    local hasSetSpawnJungle = false -- ตัวแปรเช็คว่าเซฟจุดเกิดที่ Jungle หรือยัง
+    local hasSetSpawnJungle = false
+
+    -- ฟังก์ชันเช็คเลเวลที่แม่นยำและรวดเร็ว
+    local function getMyLevel()
+        local lv = 1
+        pcall(function()
+            lv = LP.Data.Level.Value
+        end)
+        return lv
+    end
 
     ------------------------------------------------------------------------
-    -- [2] ตัวแปรตำแหน่ง (กำหนดเป็นตารางเพื่อให้สลับง่าย)
+    -- [2] ตัวแปรตำแหน่ง
     ------------------------------------------------------------------------
     local CONFIG = {
         [1] = { -- Bandit (Lv. 1 - 9)
@@ -740,7 +749,7 @@ registerRight("Home", function(scroll)
     -- [3] ฟังก์ชันระบบ
     ------------------------------------------------------------------------
     local function getCurrentTarget()
-        local lv = LP.Data.Level.Value
+        local lv = getMyLevel()
         return (lv >= 10) and CONFIG[2] or CONFIG[1]
     end
 
@@ -771,7 +780,7 @@ registerRight("Home", function(scroll)
         if not char or not farmLevelAuto or not isQuestActive() then return end
         local target = getCurrentTarget()
         local hrp = char:FindFirstChild("HumanoidRootPart")
-        if not hrp or (hrp.Position - target.NPC).Magnitude < 30 then return end 
+        if not hrp then return end 
         
         equipCombat()
         local netRE = game:GetService("ReplicatedStorage"):WaitForChild("Modules"):WaitForChild("Net")
@@ -802,14 +811,10 @@ registerRight("Home", function(scroll)
         local char = LP.Character
         if char then
             local target = getCurrentTarget()
-            local hrp = char:FindFirstChild("HumanoidRootPart")
-            local questOn = isQuestActive()
-            
             for _, p in ipairs(char:GetDescendants()) do
                 if p:IsA("BasePart") then p.CanCollide = false end
             end
-
-            if questOn then
+            if isQuestActive() then
                 if sethiddenproperty then sethiddenproperty(LP, "SimulationRadius", math.huge) end
                 local enemies = workspace:FindFirstChild("Enemies")
                 if enemies then
@@ -840,29 +845,32 @@ registerRight("Home", function(scroll)
                     if not hrp or not hum then return end
                     stopAnimations(); hum.PlatformStand = true
                     
-                    local lv = LP.Data.Level.Value
-                    local target = getCurrentTarget()
+                    local lv = getMyLevel()
+                    local target = (lv >= 10) and CONFIG[2] or CONFIG[1]
                     
-                    -- เช็คระบบ Set Spawn เมื่อถึงเกาะ Jungle ครั้งแรก
+                    -- เช็คระบบ Set Spawn Jungle (พิกัดที่คุณให้มา)
                     if lv >= 10 and not hasSetSpawnJungle then
                         local distToSpawn = (hrp.Position - target.SpawnPos).Magnitude
                         if distToSpawn > 5 then
-                            hrp.Velocity = (target.SpawnPos - hrp.Position).Unit * 185
+                            hrp.Anchored = false
+                            local bv = hrp:FindFirstChild("UFO_Fly") or Instance.new("BodyVelocity", hrp)
+                            bv.MaxForce = Vector3.new(9e9,9e9,9e9); bv.Velocity = (target.SpawnPos - hrp.Position).Unit * 185
                         else
-                            hrp.CFrame = CFrame.new(target.SpawnPos)
+                            if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly:Destroy() end
+                            hrp.Anchored = true; hrp.CFrame = CFrame.new(target.SpawnPos)
                             game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("SetSpawnPoint")
                             hasSetSpawnJungle = true
-                            task.wait(1)
+                            task.wait(0.5)
                         end
                     else
-                        -- ระบบฟาร์มปกติ
+                        -- ระบบบินไปฟาร์ม/รับเควส
                         local targetPos = isQuestActive() and target.Farm or target.NPC
                         if (hrp.Position - targetPos).Magnitude > 5 then
                             hrp.Anchored = false
                             local bv = hrp:FindFirstChild("UFO_Fly") or Instance.new("BodyVelocity", hrp)
-                            bv.MaxForce = Vector3.new(9e9,9e9,9e9); bv.Velocity = (targetPos - hrp.Position).Unit * 185
+                            bv.Name = "UFO_Fly"; bv.MaxForce = Vector3.new(9e9,9e9,9e9); bv.Velocity = (targetPos - hrp.Position).Unit * 185
                             local bg = hrp:FindFirstChild("UFO_Gyro") or Instance.new("BodyGyro", hrp)
-                            bg.MaxTorque = Vector3.new(9e9,9e9,9e9); bg.CFrame = CFrame.new(hrp.Position, targetPos)
+                            bg.Name = "UFO_Gyro"; bg.MaxTorque = Vector3.new(9e9,9e9,9e9); bg.CFrame = CFrame.new(hrp.Position, targetPos)
                         else
                             if hrp:FindFirstChild("UFO_Fly") then hrp.UFO_Fly:Destroy() end
                             if hrp:FindFirstChild("UFO_Gyro") then hrp.UFO_Gyro:Destroy() end
@@ -914,7 +922,7 @@ registerRight("Home", function(scroll)
     knob.Size = UDim2.fromOffset(22,22); knob.BackgroundColor3 = THEME.WHITE; knob.Position = UDim2.new(0,2,0.5,-11)
     Instance.new("UICorner", knob).CornerRadius = UDim.new(0,11)
 
-    local function update(on)
+    local function updateVisual(on)
         sws.Color = on and THEME.GREEN or THEME.RED
         TweenService:Create(knob, TweenInfo.new(0.08), {Position = UDim2.new(on and 1 or 0, on and -24 or 2, 0.5, -11)}):Play()
         if on then Lighting.Brightness = 0; Lighting.GlobalShadows = false
@@ -926,13 +934,13 @@ registerRight("Home", function(scroll)
     btn.MouseButton1Click:Connect(function()
         farmLevelAuto = not farmLevelAuto
         SaveSet("AutoFarmState", farmLevelAuto)
-        update(farmLevelAuto)
+        updateVisual(farmLevelAuto)
         if not farmLevelAuto then
             pcall(function() if LP.Character and LP.Character:FindFirstChildOfClass("Humanoid") then LP.Character.Humanoid.Health = 0 end end)
         end
     end)
 
-    update(farmLevelAuto)
+    updateVisual(farmLevelAuto)
 end)
 -- ===== UFO HUB X • Home – Bomb Finder (Model A V1) =====
 
