@@ -691,270 +691,227 @@ end)
 
 registerRight("Home", function(scroll) end)
 registerRight("Settings", function(scroll) end)
---===== UFO HUB X • Home • Farm Level + Check Level + Combat Equip + SSS1 (Model A V1) =====
+--===== UFO HUB X • Home • Farm Level 🌾 (Model A V1 + AA1 + SSS1) =====
 registerRight("Home", function(scroll)
 
-    ------------------------------------------------------------------------
+    ----------------------------------------------------------------
     -- SERVICES
-    ------------------------------------------------------------------------
-    local TweenService = game:GetService("TweenService")
-    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    ----------------------------------------------------------------
     local Players = game:GetService("Players")
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
     local RunService = game:GetService("RunService")
     local LP = Players.LocalPlayer
     local netRE = ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Net")
 
-    ------------------------------------------------------------------------
-    -- SAVE (AA1)
-    ------------------------------------------------------------------------
+    ----------------------------------------------------------------
+    -- AA1 SAVE
+    ----------------------------------------------------------------
     local SAVE = getgenv().UFOX_SAVE
-    local SCOPE = ("AA1/FarmLevel/%d/%d/%s")
-        :format(game.PlaceId, LP.UserId, LP.Name)
+    local SCOPE = ("AA1/FarmLevel/%d/%d/%s"):format(game.PlaceId, LP.UserId, LP.Name)
 
-    local function SaveGet(k, d)
-        local ok, v = pcall(function()
-            return SAVE.get(SCOPE .. "/" .. k, d)
+    local function SG(k,d)
+        local ok,v = pcall(function()
+            return SAVE.get(SCOPE.."/"..k,d)
         end)
         return ok and v or d
     end
-
-    local function SaveSet(k, v)
+    local function SS(k,v)
         pcall(function()
-            SAVE.set(SCOPE .. "/" .. k, v)
+            SAVE.set(SCOPE.."/"..k,v)
         end)
     end
 
-    ------------------------------------------------------------------------
+    ----------------------------------------------------------------
     -- STATE
-    ------------------------------------------------------------------------
-    local enabled = SaveGet("Toggle", false)
+    ----------------------------------------------------------------
+    local ENABLED = SG("Enabled", false)
     local holdConn
 
-    ------------------------------------------------------------------------
+    ----------------------------------------------------------------
     -- CHECK LEVEL
-    ------------------------------------------------------------------------
+    ----------------------------------------------------------------
     local function checklevel()
         return LP:WaitForChild("Data"):WaitForChild("Level").Value
     end
 
-    ------------------------------------------------------------------------
-    -- COMBAT LIST (PRIORITY ORDER)
-    ------------------------------------------------------------------------
+    ----------------------------------------------------------------
+    -- COMBAT PRIORITY
+    ----------------------------------------------------------------
     local COMBAT_STYLES = {
         "Sanguine Art","Godhuman","Dragon Talon","Electric Claw",
         "Sharkman Karate","Death Step","Superhuman","Dragon Breath",
-        "Water Kung Fu","Electric","Dark Step","Combat",
+        "Water Kung Fu","Electric","Dark Step","Combat"
     }
 
-    ------------------------------------------------------------------------
-    -- FIND + EQUIP COMBAT
-    ------------------------------------------------------------------------
     local function equipCombat()
-        local backpack = LP:WaitForChild("Backpack")
+        local bp = LP:WaitForChild("Backpack")
         local char = LP.Character or LP.CharacterAdded:Wait()
-        local humanoid = char:WaitForChild("Humanoid")
-
-        for _, style in ipairs(COMBAT_STYLES) do
-            local tool = backpack:FindFirstChild(style)
-            if tool and tool:IsA("Tool") then
-                humanoid:EquipTool(tool)
+        local hum = char:WaitForChild("Humanoid")
+        for _,name in ipairs(COMBAT_STYLES) do
+            local t = bp:FindFirstChild(name)
+            if t and t:IsA("Tool") then
+                hum:EquipTool(t)
                 return
             end
         end
     end
 
-    ------------------------------------------------------------------------
-    -- HOLD COMBAT
-    ------------------------------------------------------------------------
-    local function startHoldCombat()
+    local function startHold()
         if holdConn then holdConn:Disconnect() end
         holdConn = RunService.Heartbeat:Connect(function()
-            if not enabled then return end
-            local char = LP.Character
-            local hum = char and char:FindFirstChildOfClass("Humanoid")
-            if hum and not hum:FindFirstChildOfClass("Tool") then
+            if not ENABLED then return end
+            local c = LP.Character
+            local h = c and c:FindFirstChildOfClass("Humanoid")
+            if h and not h:FindFirstChildOfClass("Tool") then
                 equipCombat()
             end
         end)
     end
 
-    local function stopHoldCombat()
-        if holdConn then holdConn:Disconnect() holdConn = nil end
+    local function stopHold()
+        if holdConn then holdConn:Disconnect() holdConn=nil end
     end
 
-    ------------------------------------------------------------------------
-    -- REDEEM CODES (ONCE)
-    ------------------------------------------------------------------------
+    ----------------------------------------------------------------
+    -- REDEEM ONCE
+    ----------------------------------------------------------------
     local CODES = {
         "LIGHTNINGABUSE","KITT_RESET","SUB2OFFICIALNOOBIE","BIGNEWS",
         "BLUXXY","CHANDLER","FUDD10","ENYU_IS_PRO","FUDD10_V2","JCWK",
         "KITTGAMING","MAGICBUS","STARCODEHEO","STRAWHATMAINE",
         "SUB2CAPTAINMAUI","SUB2DAIGROCK","SUB2FER999",
         "SUB2GAMERROBOT_EXP1","SUB2GAMERROBOT_RESET1",
-        "SUB2NOOBMASTER123","TANTAIGAMING","THEGREATACE","SUB2UNCLEKIZARU",
+        "SUB2NOOBMASTER123","TANTAIGAMING","THEGREATACE","SUB2UNCLEKIZARU"
     }
 
     local function redeemOnce()
-        if SaveGet("Redeemed", false) then return end
-        local remote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Redeem")
-        for _, code in ipairs(CODES) do
-            pcall(function()
-                remote:InvokeServer(code)
-            end)
-            task.wait(0.12)
+        if SG("Redeemed",false) then return end
+        local r = ReplicatedStorage.Remotes.Redeem
+        for _,c in ipairs(CODES) do
+            pcall(function() r:InvokeServer(c) end)
+            task.wait(0.1)
         end
-        SaveSet("Redeemed", true)
+        SS("Redeemed",true)
     end
 
-    ------------------------------------------------------------------------
-    -- ===== SSS1 CORE (UNCHANGED LOGIC) =====
-    ------------------------------------------------------------------------
-    getgenv().UFO_Data = {
-        CurrentKey = "6038e23a",
-        LastHrpName = "HumanoidRootPart"
-    }
+    ----------------------------------------------------------------
+    -- SSS1 (UNCHANGED CORE)
+    ----------------------------------------------------------------
+    getgenv().UFO_Data = { CurrentKey="6038e23a", LastHrpName="HumanoidRootPart" }
+    getgenv().UFO_Combat = { Enabled=false, AuraRange=1000, AttackPerStep=5, BatchSize=2 }
 
-    getgenv().UFO_Combat = {
-        Enabled = false,
-        AuraRange = 1000,
-        AttackPerStep = 5,
-        BatchSize = 2
-    }
-
-    if not getgenv().UFO_SSS1_HOOKED then
-        getgenv().UFO_SSS1_HOOKED = true
-        local oldNamecall
-        oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-            local args = {...}
-            local method = getnamecallmethod()
-            if tostring(self) == "RE/RegisterHit" and method == "FireServer" then
-                if args[4] then getgenv().UFO_Data.CurrentKey = args[4]
-                elseif args[3] then getgenv().UFO_Data.CurrentKey = args[3] end
+    if not getgenv().UFO_SSS1 then
+        getgenv().UFO_SSS1 = true
+        local old; old = hookmetamethod(game,"__namecall",function(self,...)
+            local a={...}
+            if tostring(self)=="RE/RegisterHit" then
+                if a[4] then getgenv().UFO_Data.CurrentKey=a[4]
+                elseif a[3] then getgenv().UFO_Data.CurrentKey=a[3] end
             end
-            return oldNamecall(self, ...)
+            return old(self,...)
         end)
     end
 
-    local targetIndex = 1
-
+    local ti=1
     RunService.Heartbeat:Connect(function()
         if not getgenv().UFO_Combat.Enabled then return end
-        pcall(function()
-            local char = LP.Character
-            local hrp = char and char:FindFirstChild("HumanoidRootPart")
-            if not hrp then return end
-            local enemies = workspace:FindFirstChild("Enemies")
-            if not enemies then return end
-
-            local allTargets = {}
-            for _, v in ipairs(enemies:GetChildren()) do
-                local h = v:FindFirstChild("Humanoid")
-                local p = v:FindFirstChild("HumanoidRootPart")
-                if h and h.Health > 0 and p then
-                    if (p.Position - hrp.Position).Magnitude <= getgenv().UFO_Combat.AuraRange then
-                        table.insert(allTargets, v)
-                    end
-                end
+        local c=LP.Character
+        local hrp=c and c:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
+        local e=workspace:FindFirstChild("Enemies")
+        if not e then return end
+        local t={}
+        for _,v in ipairs(e:GetChildren()) do
+            local h=v:FindFirstChild("Humanoid")
+            local p=v:FindFirstChild("HumanoidRootPart")
+            if h and h.Health>0 and p and (p.Position-hrp.Position).Magnitude<=1000 then
+                table.insert(t,v)
             end
-
-            for i = 1, getgenv().UFO_Combat.AttackPerStep do
-                if #allTargets == 0 then break end
-                targetIndex = (targetIndex % #allTargets) + 1
-                local target = allTargets[targetIndex]
-                local part = target:FindFirstChild(getgenv().UFO_Data.LastHrpName)
-                    or target:FindFirstChild("HumanoidRootPart")
-
-                task.spawn(function()
-                    netRE:WaitForChild("RE/RegisterAttack"):FireServer(0.5)
-                    for b = 1, getgenv().UFO_Combat.BatchSize do
-                        netRE:WaitForChild("RE/RegisterHit"):FireServer(unpack({
-                            [1] = part,
-                            [2] = {},
-                            [4] = getgenv().UFO_Data.CurrentKey
-                        }))
-                    end
-                end)
-            end
-        end)
-    end)
-
-    RunService.Stepped:Connect(function()
-        if getgenv().UFO_Combat.Enabled and sethiddenproperty then
-            sethiddenproperty(LP, "SimulationRadius", 2000)
-            sethiddenproperty(LP, "MaxSimulationRadius", 2000)
+        end
+        for i=1,5 do
+            if #t==0 then break end
+            ti=(ti%#t)+1
+            local trg=t[ti]
+            task.spawn(function()
+                netRE["RE/RegisterAttack"]:FireServer(0.5)
+                netRE["RE/RegisterHit"]:FireServer(trg.HumanoidRootPart,{},getgenv().UFO_Data.CurrentKey)
+            end)
         end
     end)
 
-    ------------------------------------------------------------------------
-    -- UI (MODEL A V1) ❌ ไม่แตะหน้าตา
-    ------------------------------------------------------------------------
-    local list = scroll:FindFirstChildOfClass("UIListLayout") or Instance.new("UIListLayout", scroll)
-    list.Padding = UDim.new(0,12)
-    scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    ----------------------------------------------------------------
+    -- UI (MODEL A V1 SWITCH)
+    ----------------------------------------------------------------
+    local list = scroll:FindFirstChildOfClass("UIListLayout") or Instance.new("UIListLayout",scroll)
+    list.Padding=UDim.new(0,12)
+    scroll.AutomaticCanvasSize=Enum.AutomaticSize.Y
 
-    local base = 0
-    for _, c in ipairs(scroll:GetChildren()) do
-        if c:IsA("GuiObject") and c ~= list then
-            base = math.max(base, c.LayoutOrder or 0)
-        end
+    local header=Instance.new("TextLabel",scroll)
+    header.Size=UDim2.new(1,0,0,36)
+    header.BackgroundTransparency=1
+    header.Font=Enum.Font.GothamBold
+    header.TextSize=16
+    header.TextColor3=Color3.new(1,1,1)
+    header.TextXAlignment=Enum.TextXAlignment.Left
+    header.Text="Farm Level 🌾"
+
+    local row=Instance.new("Frame",scroll)
+    row.Size=UDim2.new(1,-6,0,46)
+    row.BackgroundColor3=Color3.new(0,0,0)
+    Instance.new("UICorner",row).CornerRadius=UDim.new(0,12)
+    Instance.new("UIStroke",row).Color=Color3.fromRGB(25,255,125)
+
+    local txt=Instance.new("TextLabel",row)
+    txt.BackgroundTransparency=1
+    txt.Position=UDim2.new(0,16,0,0)
+    txt.Size=UDim2.new(1,-120,1,0)
+    txt.Font=Enum.Font.GothamBold
+    txt.TextSize=13
+    txt.TextColor3=Color3.new(1,1,1)
+    txt.TextXAlignment=Enum.TextXAlignment.Left
+    txt.Text="Auto Farm Level"
+
+    local sw=Instance.new("TextButton",row)
+    sw.AnchorPoint=Vector2.new(1,0.5)
+    sw.Position=UDim2.new(1,-14,0.5,0)
+    sw.Size=UDim2.fromOffset(40,22)
+    sw.Text=""
+    Instance.new("UICorner",sw).CornerRadius=UDim.new(1,0)
+
+    local dot=Instance.new("Frame",sw)
+    dot.Size=UDim2.fromOffset(18,18)
+    dot.Position=UDim2.new(0,2,0.5,-9)
+    dot.BackgroundColor3=Color3.new(1,1,1)
+    Instance.new("UICorner",dot).CornerRadius=UDim.new(1,0)
+
+    local function refresh()
+        sw.BackgroundColor3 = ENABLED and Color3.fromRGB(25,255,125) or Color3.fromRGB(60,60,60)
+        dot.Position = ENABLED and UDim2.new(1,-20,0.5,-9) or UDim2.new(0,2,0.5,-9)
     end
 
-    local header = Instance.new("TextLabel", scroll)
-    header.Size = UDim2.new(1,0,0,36)
-    header.BackgroundTransparency = 1
-    header.Font = Enum.Font.GothamBold
-    header.TextSize = 16
-    header.TextColor3 = Color3.new(1,1,1)
-    header.TextXAlignment = Enum.TextXAlignment.Left
-    header.Text = "Farm Level 🌾"
-    header.LayoutOrder = base + 1
-
-    local row = Instance.new("Frame", scroll)
-    row.Size = UDim2.new(1,-6,0,46)
-    row.BackgroundColor3 = Color3.new(0,0,0)
-    row.LayoutOrder = base + 2
-    Instance.new("UICorner", row).CornerRadius = UDim.new(0,12)
-    Instance.new("UIStroke", row).Color = Color3.fromRGB(25,255,125)
-
-    local label = Instance.new("TextLabel", row)
-    label.BackgroundTransparency = 1
-    label.Position = UDim2.new(0,16,0,0)
-    label.Size = UDim2.new(1,-160,1,0)
-    label.Font = Enum.Font.GothamBold
-    label.TextSize = 13
-    label.TextColor3 = Color3.new(1,1,1)
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.Text = "Auto Farm Level"
-
-    local btn = Instance.new("TextButton", row)
-    btn.AnchorPoint = Vector2.new(1,0.5)
-    btn.Position = UDim2.new(1,-12,0.5,0)
-    btn.Size = UDim2.fromOffset(52,26)
-    btn.Text = ""
-    btn.BackgroundTransparency = 1
-
-    btn.MouseButton1Click:Connect(function()
-        enabled = not enabled
-        SaveSet("Toggle", enabled)
-
-        if enabled then
+    sw.MouseButton1Click:Connect(function()
+        ENABLED=not ENABLED
+        SS("Enabled",ENABLED)
+        refresh()
+        if ENABLED then
             redeemOnce()
             equipCombat()
-            startHoldCombat()
-            getgenv().UFO_Combat.Enabled = true
+            startHold()
+            getgenv().UFO_Combat.Enabled=true
         else
-            stopHoldCombat()
-            getgenv().UFO_Combat.Enabled = false
+            stopHold()
+            getgenv().UFO_Combat.Enabled=false
         end
     end)
 
-    if enabled then
+    refresh()
+    if ENABLED then
         task.spawn(function()
-            task.wait(0.35)
+            task.wait(0.3)
             redeemOnce()
             equipCombat()
-            startHoldCombat()
-            getgenv().UFO_Combat.Enabled = true
+            startHold()
+            getgenv().UFO_Combat.Enabled=true
         end)
     end
 end)
