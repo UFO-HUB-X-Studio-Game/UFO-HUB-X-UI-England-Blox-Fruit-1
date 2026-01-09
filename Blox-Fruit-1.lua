@@ -829,47 +829,115 @@ registerRight("Home", function(scroll)
         flyLoop = nil,
         questAccepted = false,
         isFlyingToQuest = false,
-        combatEquipped = false
+        combatEquipped = false,
+        noClipEnabled = false,
+        bodyMovers = {}
     }
     local FARM = _G.UFOX_FARM
 
     -- ---------- QUEST POSITIONS ----------
     local QUEST_TARGET = Vector3.new(1059.808, 16.429, 1548.232)
+    local STANDING_PART = Vector3.new(1058.809, 10.857, 1553.415)
+    local ANCHOR_PIVOT = Vector3.new(1057.313, 20.371, 1556.660)
 
-    -- ---------- FLIGHT SYSTEM (Straight Line, NoClip) ----------
-    local function enableNoClip()
+    -- ---------- ADVANCED NOCLIP SYSTEM (ทะลุทุกอย่าง) ----------
+    local PhysicsService = game:GetService("PhysicsService")
+    
+    local function enableAdvancedNoClip()
         local char = lp.Character
         if not char then return end
         
-        for _,part in ipairs(char:GetDescendants()) do
+        FARM.noClipEnabled = true
+        
+        -- สร้าง collision group ใหม่สำหรับตัวละคร
+        local collisionGroupName = "UFOX_NoClipGroup"
+        
+        -- ลองสร้าง collision group
+        pcall(function()
+            PhysicsService:CreateCollisionGroup(collisionGroupName)
+            PhysicsService:CollisionGroupSetCollidable(collisionGroupName, "Default", false)
+            PhysicsService:CollisionGroupSetCollidable(collisionGroupName, collisionGroupName, false)
+        end)
+        
+        -- ทำให้ทุก part ในตัวละครไม่ชนกัน
+        for _, part in ipairs(char:GetDescendants()) do
             if part:IsA("BasePart") then
+                -- Disable collision แบบแข็งแรง
                 part.CanCollide = false
+                part.CanTouch = false
+                part.CanQuery = false
+                
+                -- ใช้ collision group
+                pcall(function()
+                    PhysicsService:SetPartCollisionGroup(part, collisionGroupName)
+                end)
+                
+                -- สร้าง BodyMover เพื่อควบคุมการเคลื่อนที่
+                if part.Name == "HumanoidRootPart" then
+                    local bodyPosition = Instance.new("BodyPosition")
+                    bodyPosition.Name = "UFOX_BodyPosition"
+                    bodyPosition.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                    bodyPosition.P = 1250
+                    bodyPosition.D = 250
+                    bodyPosition.Parent = part
+                    
+                    local bodyGyro = Instance.new("BodyGyro")
+                    bodyGyro.Name = "UFOX_BodyGyro"
+                    bodyGyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+                    bodyGyro.P = 3000
+                    bodyGyro.D = 500
+                    bodyGyro.Parent = part
+                    
+                    FARM.bodyMovers.position = bodyPosition
+                    FARM.bodyMovers.gyro = bodyGyro
+                end
             end
         end
         
+        -- ปิด physics ของ humanoid
         local humanoid = char:FindFirstChildOfClass("Humanoid")
         if humanoid then
             humanoid.PlatformStand = true
+            humanoid.AutoRotate = false -- ปิดการหมุนอัตโนมัติ
         end
     end
 
-    local function disableNoClip()
+    local function disableAdvancedNoClip()
         local char = lp.Character
         if not char then return end
         
-        for _,part in ipairs(char:GetDescendants()) do
+        FARM.noClipEnabled = false
+        
+        -- ลบ BodyMovers
+        for _, mover in pairs(FARM.bodyMovers) do
+            if mover and mover.Parent then
+                mover:Destroy()
+            end
+        end
+        FARM.bodyMovers = {}
+        
+        -- คืนค่า collision
+        for _, part in ipairs(char:GetDescendants()) do
             if part:IsA("BasePart") then
                 part.CanCollide = true
+                part.CanTouch = true
+                part.CanQuery = true
+                
+                pcall(function()
+                    PhysicsService:SetPartCollisionGroup(part, "Default")
+                end)
             end
         end
         
+        -- คืนค่า humanoid
         local humanoid = char:FindFirstChildOfClass("Humanoid")
         if humanoid then
             humanoid.PlatformStand = false
+            humanoid.AutoRotate = true -- เปิดการหมุนอัตโนมัติกลับ
         end
     end
 
-    -- ---------- FLY TO QUEST (Straight Line) ----------
+    -- ---------- FLY TO QUEST (Straight Line, No Rotation) ----------
     local function flyToQuest()
         local char = lp.Character
         if not char then return end
@@ -877,18 +945,21 @@ registerRight("Home", function(scroll)
         local hrp = char:FindFirstChild("HumanoidRootPart")
         if not hrp then return end
         
-        enableNoClip()
+        enableAdvancedNoClip()
         FARM.isFlyingToQuest = true
         
-        local flySpeed = 150 -- ความเร็วบิน
-        local arrivalDistance = 5 -- ระยะที่ถือว่าถึง
+        local flySpeed = 200 -- ความเร็วบิน (เร็วขึ้น)
+        local arrivalDistance = 3 -- ระยะที่ถือว่าถึง (ลดลง)
+        local heightOffset = 5 -- บินสูงกว่าจุดหมายเล็กน้อย
         
-        -- หาทิศทางไปยังจุดหมาย (แนวตรง)
-        local direction = (QUEST_TARGET - hrp.Position)
-        local distance = direction.Magnitude
-        direction = direction.Unit
+        -- ตำแหน่งจุดหมาย (เพิ่มความสูงเล็กน้อย)
+        local targetPos = Vector3.new(
+            QUEST_TARGET.X,
+            QUEST_TARGET.Y + heightOffset,
+            QUEST_TARGET.Z
+        )
         
-        -- บินไปทีละน้อยๆ (Heartbeat loop)
+        -- บินไปทีละน้อยๆ
         if FARM.flyLoop then
             FARM.flyLoop:Disconnect()
         end
@@ -906,25 +977,63 @@ registerRight("Home", function(scroll)
             if not currentHrp then return end
             
             local currentPos = currentHrp.Position
-            local toTarget = QUEST_TARGET - currentPos
+            local toTarget = targetPos - currentPos
             local currentDist = toTarget.Magnitude
             
             if currentDist <= arrivalDistance then
                 -- ถึงจุดหมายแล้ว
                 FARM.isFlyingToQuest = false
+                
+                -- ปิด NoClip ทันที
+                disableAdvancedNoClip()
+                
+                -- วางตัวละครลงพื้นอย่างนุ่มนวล
+                local finalPos = Vector3.new(
+                    STANDING_PART.X,
+                    STANDING_PART.Y,
+                    STANDING_PART.Z
+                )
+                
+                currentHrp.CFrame = CFrame.new(finalPos)
+                
+                -- หยุดการหมุน
+                currentHrp.AssemblyLinearVelocity = Vector3.zero
+                currentHrp.AssemblyAngularVelocity = Vector3.zero
+                
                 if FARM.flyLoop then
                     FARM.flyLoop:Disconnect()
                     FARM.flyLoop = nil
                 end
+                
+                -- รอสักครู่แล้วรับ quest
+                task.wait(0.5)
                 acceptQuest()
                 return
             end
             
-            -- เคลื่อนที่แบบแนวตรง
-            local moveAmount = math.min(flySpeed * dt, currentDist)
-            local newPos = currentPos + (toTarget.Unit * moveAmount)
+            -- คำนวณทิศทาง (ป้องกันการหมุน)
+            local direction = toTarget.Unit
             
-            currentHrp.CFrame = CFrame.lookAt(newPos, newPos + toTarget.Unit)
+            -- ใช้ BodyPosition เพื่อเคลื่อนที่ (ไม่หมุน)
+            if FARM.bodyMovers.position then
+                local moveAmount = math.min(flySpeed * dt, currentDist)
+                local nextPos = currentPos + (direction * moveAmount)
+                
+                FARM.bodyMovers.position.Position = nextPos
+                
+                -- ใช้ BodyGyro เพื่อรักษาทิศทาง (ไม่ให้หมุน)
+                if FARM.bodyMovers.gyro then
+                    local lookAtPos = nextPos + direction
+                    FARM.bodyMovers.gyro.CFrame = CFrame.lookAt(nextPos, lookAtPos)
+                end
+            else
+                -- Fallback: ใช้วิธีเดิม
+                local moveAmount = math.min(flySpeed * dt, currentDist)
+                local newPos = currentPos + (direction * moveAmount)
+                
+                -- ใช้ CFrame โดยไม่ lookAt (ป้องกันการหมุน)
+                currentHrp.CFrame = CFrame.new(newPos)
+            end
         end)
     end
 
@@ -1013,7 +1122,7 @@ registerRight("Home", function(scroll)
         return nearest
     end
 
-    -- ---------- FARM LOGIC ----------
+    -- ---------- FARM LOGIC (NoClip ปิดแล้ว) ----------
     local function attackNPC(npc)
         local char = lp.Character
         if not char then return end
@@ -1024,8 +1133,9 @@ registerRight("Home", function(scroll)
         
         if not hrp or not humanoid or not npcHrp then return end
         
-        local direction = (npcHrp.Position - hrp.Position).Unit
-        hrp.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + direction)
+        -- ตั้งทิศทาง (ไม่ใช้ lookAt เพื่อป้องกันการหมุน)
+        local direction = (npcHrp.Position - hrp.Position)
+        hrp.CFrame = CFrame.new(hrp.Position, hrp.Position + direction)
         
         local combat = getEquippedCombat()
         if combat then
@@ -1044,7 +1154,6 @@ registerRight("Home", function(scroll)
             
             -- ตรวจสอบว่าได้ quest แล้วหรือยัง
             if not FARM.questAccepted and not FARM.isFlyingToQuest then
-                -- ยังไม่ได้ quest → บินไปรับ quest
                 flyToQuest()
                 return
             end
@@ -1059,16 +1168,20 @@ registerRight("Home", function(scroll)
             if target then
                 attackNPC(target)
             else
-                -- ถ้าไม่มีศัตรู ให้เดินหาสุ่ม
+                -- ถ้าไม่มีศัตรู ให้เดินหาสุ่ม (ไม่หมุน)
                 local char = lp.Character
                 local hrp = char and char:FindFirstChild("HumanoidRootPart")
                 if hrp then
-                    local randomDir = Vector3.new(
-                        math.random(-50, 50),
+                    local currentPos = hrp.Position
+                    local randomOffset = Vector3.new(
+                        math.random(-20, 20),
                         0,
-                        math.random(-50, 50)
+                        math.random(-20, 20)
                     )
-                    hrp.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + randomDir)
+                    local targetPos = currentPos + randomOffset
+                    
+                    -- เคลื่อนที่โดยไม่หมุน
+                    hrp.CFrame = CFrame.new(currentPos, targetPos)
                 end
             end
         end)
@@ -1083,7 +1196,7 @@ registerRight("Home", function(scroll)
             FARM.flyLoop:Disconnect()
             FARM.flyLoop = nil
         end
-        disableNoClip()
+        disableAdvancedNoClip()
         FARM.isFlyingToQuest = false
         FARM.questAccepted = false
         FARM.combatEquipped = false
@@ -1097,7 +1210,6 @@ registerRight("Home", function(scroll)
     corner(row,12); stroke(row,2.2,THEME.GREEN)
     row.LayoutOrder=baseOrder+1
 
-    -- เปลี่ยนชื่อเป็นภาษาอังกฤษ
     local lab=Instance.new("TextLabel",row)
     lab.BackgroundTransparency=1
     lab.Size=UDim2.new(1,-160,1,0)
@@ -1106,7 +1218,7 @@ registerRight("Home", function(scroll)
     lab.TextSize=13
     lab.TextColor3=THEME.WHITE
     lab.TextXAlignment=Enum.TextXAlignment.Left
-    lab.Text="Auto Level Farm"  -- ภาษาอังกฤษ
+    lab.Text="Auto Level Farm"
 
     local sw=Instance.new("Frame",row)
     sw.AnchorPoint=Vector2.new(1,0.5)
@@ -1165,20 +1277,19 @@ registerRight("Home", function(scroll)
             statusLabel.TextColor3 = THEME.RED
         elseif FARM.isFlyingToQuest then
             statusLabel.Text = "FLYING"
-            statusLabel.TextColor3 = Color3.fromRGB(0,150,255) -- สีฟ้า
+            statusLabel.TextColor3 = Color3.fromRGB(0,150,255)
         elseif not FARM.questAccepted then
             statusLabel.Text = "NO QUEST"
-            statusLabel.TextColor3 = Color3.fromRGB(255,165,0) -- สีส้ม
+            statusLabel.TextColor3 = Color3.fromRGB(255,165,0)
         elseif hasCombatInBackpack() then
             statusLabel.Text = "NO WEAPON"
-            statusLabel.TextColor3 = Color3.fromRGB(255,165,0) -- สีส้ม
+            statusLabel.TextColor3 = Color3.fromRGB(255,165,0)
         else
             statusLabel.Text = "FARMING"
             statusLabel.TextColor3 = THEME.GREEN
         end
     end
     
-    -- Status update loop
     task.spawn(function()
         while task.wait(0.5) do
             if row.Parent then
@@ -1203,6 +1314,13 @@ registerRight("Home", function(scroll)
         if FARM.enabled then
             task.wait(2)
             startFarmLoop()
+        end
+    end)
+    
+    -- ---------- CLEANUP ON SCRIPT REMOVAL ----------
+    game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui").ChildRemoved:Connect(function(child)
+        if child.Name == "UFO_HUB_X_UI" then
+            stopFarmLoop()
         end
     end)
 end)
