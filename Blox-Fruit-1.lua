@@ -691,7 +691,7 @@ end)
 
 registerRight("Home", function(scroll) end)
 registerRight("Settings", function(scroll) end)
---===== UFO HUB X • Home • Farm Level + Check Level + Combat Check (Model A V1) =====
+--===== UFO HUB X • Home • Farm Level + Check Level + Combat Equip (Model A V1) =====
 registerRight("Home", function(scroll)
 
     ------------------------------------------------------------------------
@@ -754,14 +754,18 @@ registerRight("Home", function(scroll)
     }
 
     ------------------------------------------------------------------------
-    -- CHECK CURRENT COMBAT (ถือหมัดอะไรอยู่)
+    -- FIND + EQUIP COMBAT (CORRECT WAY)
     ------------------------------------------------------------------------
-    local function getCurrentCombat()
+    local function equipCombat()
         local backpack = LP:WaitForChild("Backpack")
+        local char = LP.Character or LP.CharacterAdded:Wait()
+        local humanoid = char:WaitForChild("Humanoid")
 
         for _, style in ipairs(COMBAT_STYLES) do
-            if not backpack:FindFirstChild(style) then
-                return style -- หมัดที่ "หายจาก Backpack" = กำลังถืออยู่
+            local tool = backpack:FindFirstChild(style)
+            if tool and tool:IsA("Tool") then
+                humanoid:EquipTool(tool)
+                return style
             end
         end
 
@@ -919,10 +923,10 @@ registerRight("Home", function(scroll)
             redeemOnce()
 
             local lv = checklevel()
-            local combat = getCurrentCombat()
+            local combat = equipCombat()
 
             print("[FarmLevel] Level:", lv)
-            print("[FarmLevel] Combat:", combat or "None")
+            print("[FarmLevel] Equipped Combat:", combat or "None")
         end
     end)
 
