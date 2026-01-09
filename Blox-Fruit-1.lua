@@ -691,638 +691,200 @@ end)
 
 registerRight("Home", function(scroll) end)
 registerRight("Settings", function(scroll) end)
--- ===== UFO HUB X • Home — Auto Level Farm + Quest System (MODEL A V1 + Runner Save + AA1) =====
+--===== UFO HUB X • Home • Farm Level Codes (Model A V1) =====
 registerRight("Home", function(scroll)
-    local Players = game:GetService("Players")
-    local RunService = game:GetService("RunService")
-    local Workspace = game:GetService("Workspace")
+
+    ------------------------------------------------------------------------
+    -- SERVICES
+    ------------------------------------------------------------------------
     local TweenService = game:GetService("TweenService")
-    local HttpService = game:GetService("HttpService")
-    local MarketplaceService = game:GetService("MarketplaceService")
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
-    local lp = Players.LocalPlayer
+    local Players = game:GetService("Players")
+    local LP = Players.LocalPlayer
 
     ------------------------------------------------------------------------
-    -- SAVE SYSTEM
+    -- SAVE (AA1) : 1 NAME + 1 USERID = 1 TIME
     ------------------------------------------------------------------------
-    local function safePlaceName()
-        local ok,info = pcall(function()
-            return MarketplaceService:GetProductInfo(game.PlaceId)
+    local SAVE = getgenv().UFOX_SAVE
+    local SCOPE = ("AA1/RedeemCodes/%d/%d/%s")
+        :format(game.PlaceId, LP.UserId, LP.Name)
+
+    local function SaveGet(k, d)
+        local ok, v = pcall(function()
+            return SAVE.get(SCOPE .. "/" .. k, d)
         end)
-        local name = (ok and info and info.Name) or ("Place_"..tostring(game.PlaceId))
-        name = name:gsub("[^%w%-%._ ]","_")
-        return name
+        return ok and v or d
     end
 
-    local SAVE_DIR = "UFO HUB X"
-    local SAVE_FILE = SAVE_DIR.."/"..tostring(game.PlaceId).." - "..safePlaceName()..".json"
-
-    local hasFS = (typeof(isfolder)=="function" and typeof(makefolder)=="function"
-                and typeof(writefile)=="function" and typeof(readfile)=="function")
-    if hasFS and not isfolder(SAVE_DIR) then pcall(makefolder, SAVE_DIR) end
-
-    getgenv().UFOX_RAM = getgenv().UFOX_RAM or {}
-    local RAM = getgenv().UFOX_RAM
-
-    local function loadSave()
-        if hasFS and pcall(function() return readfile(SAVE_FILE) end) then
-            local ok,decoded = pcall(function()
-                return HttpService:JSONDecode(readfile(SAVE_FILE))
-            end)
-            if ok and type(decoded)=="table" then return decoded end
-        end
-        return RAM[SAVE_FILE] or {}
-    end
-    
-    local function writeSave(tbl)
-        tbl = tbl or {}
-        if hasFS then
-            pcall(function()
-                writefile(SAVE_FILE, HttpService:JSONEncode(tbl))
-            end)
-        end
-        RAM[SAVE_FILE] = tbl
-    end
-    
-    local function getSave(path, default)
-        local data = loadSave()
-        local cur = data
-        for seg in string.gmatch(path, "[^%.]+") do
-            cur = (type(cur)=="table") and cur[seg] or nil
-        end
-        if cur==nil then return default end
-        return cur
-    end
-    
-    local function setSave(path, value)
-        local data = loadSave()
-        local cur = data
-        local last, prev
-        for seg in string.gmatch(path, "[^%.]+") do
-            prev = cur; last = seg
-            if type(cur[seg])~="table" then cur[seg] = {} end
-            cur = cur[seg]
-        end
-        if last then
-            cur = data
-            local parent = data
-            local key
-            for seg in string.gmatch(path, "[^%.]+") do
-                key = seg
-                if type(parent[seg])~="table" then parent[seg] = {} end
-                prev = parent
-                parent = parent[seg]
-            end
-            prev[key] = value
-        end
-        writeSave(data)
-    end
-    ------------------------------------------------------------------------
-
-    -- ---------- THEME (A V1) ----------
-    local THEME={
-        GREEN=Color3.fromRGB(25,255,125),
-        RED=Color3.fromRGB(255,40,40),
-        WHITE=Color3.fromRGB(255,255,255),
-        BLACK=Color3.fromRGB(0,0,0),
-        GREY=Color3.fromRGB(180,180,185),
-        DARK=Color3.fromRGB(60,60,65)
-    }
-    local function corner(ui,r) local c=Instance.new("UICorner") c.CornerRadius=UDim.new(0,r or 12) c.Parent=ui end
-    local function stroke(ui,th,col) local s=Instance.new("UIStroke") s.Thickness=th or 2.2 s.Color=col or THEME.GREEN s.ApplyStrokeMode=Enum.ApplyStrokeMode.Border s.Parent=ui end
-    local function tween(o,p,d) TweenService:Create(o,TweenInfo.new(d or 0.1,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),p):Play() end
-
-    -- ---------- CLEAR OLD UI ----------
-    for _,n in ipairs({"FARM_Header","FARM_AutoLevelFarm"}) do
-        local o=scroll:FindFirstChild(n)
-        if o then o:Destroy() end
-    end
-
-    -- ---------- LAYOUT ----------
-    local vlist=scroll:FindFirstChildOfClass("UIListLayout") or Instance.new("UIListLayout",scroll)
-    vlist.Padding=UDim.new(0,12); vlist.SortOrder=Enum.SortOrder.LayoutOrder
-    scroll.AutomaticCanvasSize=Enum.AutomaticSize.Y
-    
-    local baseOrder=100
-    for _,ch in ipairs(scroll:GetChildren()) do
-        if ch:IsA("GuiObject") and ch~=vlist then
-            baseOrder=math.max(baseOrder,(ch.LayoutOrder or 0)+1)
-        end
-    end
-
-    -- ---------- HEADER (Model A V1) ----------
-    local header=Instance.new("TextLabel",scroll)
-    header.Name="FARM_Header"
-    header.BackgroundTransparency=1
-    header.Size=UDim2.new(1,0,0,36)
-    header.Font=Enum.Font.GothamBold
-    header.TextSize=16
-    header.TextColor3=THEME.WHITE
-    header.TextXAlignment=Enum.TextXAlignment.Left
-    header.Text="》》》Farm Level 🆙《《《"
-    header.LayoutOrder=baseOrder
-
-    -- ---------- FARM STATE ----------
-    _G.UFOX_FARM = _G.UFOX_FARM or {
-        enabled = false,
-        farmLoop = nil,
-        flyLoop = nil,
-        questAccepted = false,
-        isFlyingToQuest = false,
-        combatEquipped = false,
-        noClipEnabled = false,
-        bodyMovers = {}
-    }
-    local FARM = _G.UFOX_FARM
-
-    -- ---------- QUEST POSITIONS ----------
-    local QUEST_TARGET = Vector3.new(1059.808, 16.429, 1548.232)
-    local STANDING_PART = Vector3.new(1058.809, 10.857, 1553.415)
-    local ANCHOR_PIVOT = Vector3.new(1057.313, 20.371, 1556.660)
-
-    -- ---------- ADVANCED NOCLIP SYSTEM (ทะลุทุกอย่าง) ----------
-    local PhysicsService = game:GetService("PhysicsService")
-    
-    local function enableAdvancedNoClip()
-        local char = lp.Character
-        if not char then return end
-        
-        FARM.noClipEnabled = true
-        
-        -- สร้าง collision group ใหม่สำหรับตัวละคร
-        local collisionGroupName = "UFOX_NoClipGroup"
-        
-        -- ลองสร้าง collision group
+    local function SaveSet(k, v)
         pcall(function()
-            PhysicsService:CreateCollisionGroup(collisionGroupName)
-            PhysicsService:CollisionGroupSetCollidable(collisionGroupName, "Default", false)
-            PhysicsService:CollisionGroupSetCollidable(collisionGroupName, collisionGroupName, false)
-        end)
-        
-        -- ทำให้ทุก part ในตัวละครไม่ชนกัน
-        for _, part in ipairs(char:GetDescendants()) do
-            if part:IsA("BasePart") then
-                -- Disable collision แบบแข็งแรง
-                part.CanCollide = false
-                part.CanTouch = false
-                part.CanQuery = false
-                
-                -- ใช้ collision group
-                pcall(function()
-                    PhysicsService:SetPartCollisionGroup(part, collisionGroupName)
-                end)
-                
-                -- สร้าง BodyMover เพื่อควบคุมการเคลื่อนที่
-                if part.Name == "HumanoidRootPart" then
-                    local bodyPosition = Instance.new("BodyPosition")
-                    bodyPosition.Name = "UFOX_BodyPosition"
-                    bodyPosition.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-                    bodyPosition.P = 1250
-                    bodyPosition.D = 250
-                    bodyPosition.Parent = part
-                    
-                    local bodyGyro = Instance.new("BodyGyro")
-                    bodyGyro.Name = "UFOX_BodyGyro"
-                    bodyGyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-                    bodyGyro.P = 3000
-                    bodyGyro.D = 500
-                    bodyGyro.Parent = part
-                    
-                    FARM.bodyMovers.position = bodyPosition
-                    FARM.bodyMovers.gyro = bodyGyro
-                end
-            end
-        end
-        
-        -- ปิด physics ของ humanoid
-        local humanoid = char:FindFirstChildOfClass("Humanoid")
-        if humanoid then
-            humanoid.PlatformStand = true
-            humanoid.AutoRotate = false -- ปิดการหมุนอัตโนมัติ
-        end
-    end
-
-    local function disableAdvancedNoClip()
-        local char = lp.Character
-        if not char then return end
-        
-        FARM.noClipEnabled = false
-        
-        -- ลบ BodyMovers
-        for _, mover in pairs(FARM.bodyMovers) do
-            if mover and mover.Parent then
-                mover:Destroy()
-            end
-        end
-        FARM.bodyMovers = {}
-        
-        -- คืนค่า collision
-        for _, part in ipairs(char:GetDescendants()) do
-            if part:IsA("BasePart") then
-                part.CanCollide = true
-                part.CanTouch = true
-                part.CanQuery = true
-                
-                pcall(function()
-                    PhysicsService:SetPartCollisionGroup(part, "Default")
-                end)
-            end
-        end
-        
-        -- คืนค่า humanoid
-        local humanoid = char:FindFirstChildOfClass("Humanoid")
-        if humanoid then
-            humanoid.PlatformStand = false
-            humanoid.AutoRotate = true -- เปิดการหมุนอัตโนมัติกลับ
-        end
-    end
-
-    -- ---------- FLY TO QUEST (Straight Line, No Rotation) ----------
-    local function flyToQuest()
-        local char = lp.Character
-        if not char then return end
-        
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        if not hrp then return end
-        
-        enableAdvancedNoClip()
-        FARM.isFlyingToQuest = true
-        
-        local flySpeed = 200 -- ความเร็วบิน (เร็วขึ้น)
-        local arrivalDistance = 3 -- ระยะที่ถือว่าถึง (ลดลง)
-        local heightOffset = 5 -- บินสูงกว่าจุดหมายเล็กน้อย
-        
-        -- ตำแหน่งจุดหมาย (เพิ่มความสูงเล็กน้อย)
-        local targetPos = Vector3.new(
-            QUEST_TARGET.X,
-            QUEST_TARGET.Y + heightOffset,
-            QUEST_TARGET.Z
-        )
-        
-        -- บินไปทีละน้อยๆ
-        if FARM.flyLoop then
-            FARM.flyLoop:Disconnect()
-        end
-        
-        FARM.flyLoop = RunService.Heartbeat:Connect(function(dt)
-            if not FARM.enabled or not FARM.isFlyingToQuest then
-                if FARM.flyLoop then
-                    FARM.flyLoop:Disconnect()
-                    FARM.flyLoop = nil
-                end
-                return
-            end
-            
-            local currentHrp = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
-            if not currentHrp then return end
-            
-            local currentPos = currentHrp.Position
-            local toTarget = targetPos - currentPos
-            local currentDist = toTarget.Magnitude
-            
-            if currentDist <= arrivalDistance then
-                -- ถึงจุดหมายแล้ว
-                FARM.isFlyingToQuest = false
-                
-                -- ปิด NoClip ทันที
-                disableAdvancedNoClip()
-                
-                -- วางตัวละครลงพื้นอย่างนุ่มนวล
-                local finalPos = Vector3.new(
-                    STANDING_PART.X,
-                    STANDING_PART.Y,
-                    STANDING_PART.Z
-                )
-                
-                currentHrp.CFrame = CFrame.new(finalPos)
-                
-                -- หยุดการหมุน
-                currentHrp.AssemblyLinearVelocity = Vector3.zero
-                currentHrp.AssemblyAngularVelocity = Vector3.zero
-                
-                if FARM.flyLoop then
-                    FARM.flyLoop:Disconnect()
-                    FARM.flyLoop = nil
-                end
-                
-                -- รอสักครู่แล้วรับ quest
-                task.wait(0.5)
-                acceptQuest()
-                return
-            end
-            
-            -- คำนวณทิศทาง (ป้องกันการหมุน)
-            local direction = toTarget.Unit
-            
-            -- ใช้ BodyPosition เพื่อเคลื่อนที่ (ไม่หมุน)
-            if FARM.bodyMovers.position then
-                local moveAmount = math.min(flySpeed * dt, currentDist)
-                local nextPos = currentPos + (direction * moveAmount)
-                
-                FARM.bodyMovers.position.Position = nextPos
-                
-                -- ใช้ BodyGyro เพื่อรักษาทิศทาง (ไม่ให้หมุน)
-                if FARM.bodyMovers.gyro then
-                    local lookAtPos = nextPos + direction
-                    FARM.bodyMovers.gyro.CFrame = CFrame.lookAt(nextPos, lookAtPos)
-                end
-            else
-                -- Fallback: ใช้วิธีเดิม
-                local moveAmount = math.min(flySpeed * dt, currentDist)
-                local newPos = currentPos + (direction * moveAmount)
-                
-                -- ใช้ CFrame โดยไม่ lookAt (ป้องกันการหมุน)
-                currentHrp.CFrame = CFrame.new(newPos)
-            end
+            SAVE.set(SCOPE .. "/" .. k, v)
         end)
     end
 
-    -- ---------- AUTO ACCEPT QUEST ----------
-    local function acceptQuest()
-        if FARM.questAccepted then return true end
-        
-        local args = {
-            "StartQuest",
-            "BanditQuest1",
-            1
-        }
-        
-        local success, result = pcall(function()
-            local remote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_")
-            return remote:InvokeServer(unpack(args))
-        end)
-        
-        if success then
-            print("[UFO HUB X] Quest accepted: BanditQuest1")
-            FARM.questAccepted = true
-            FARM.isFlyingToQuest = false
-            return true
-        else
-            print("[UFO HUB X] Failed to accept quest:", result)
-            return false
+    ------------------------------------------------------------------------
+    -- STATE
+    ------------------------------------------------------------------------
+    local enabled = SaveGet("Toggle", false)
+
+    ------------------------------------------------------------------------
+    -- REDEEM CODES (แก้ / เพิ่ม ได้ตรงนี้)
+    ------------------------------------------------------------------------
+    local CODES = {
+        "LIGHTNINGABUSE",
+        "KITT_RESET",
+        "SUB2OFFICIALNOOBIE",
+        "BIGNEWS",
+        "BLUXXY",
+        "CHANDLER",
+        "FUDD10",
+        "ENYU_IS_PRO",
+        "FUDD10_V2",
+        "JCWK",
+        "KITTGAMING",
+        "MAGICBUS",
+        "STARCODEHEO",
+        "STRAWHATMAINE",
+        "SUB2CAPTAINMAUI",
+        "SUB2DAIGROCK",
+        "SUB2FER999",
+        "SUB2GAMERROBOT_EXP1",
+        "SUB2GAMERROBOT_RESET1",
+        "SUB2NOOBMASTER123",
+        "TANTAIGAMING",
+        "THEGREATACE",
+        "SUB2UNCLEKIZARU",
+    }
+
+    ------------------------------------------------------------------------
+    -- CORE : REDEEM ONCE PER NAME + USERID
+    ------------------------------------------------------------------------
+    local function redeemOncePerPlayer()
+        if SaveGet("Redeemed", false) then
+            return -- เคยใส่แล้ว หยุดทันที
         end
-    end
 
-    -- ---------- COMBAT DETECTION ----------
-    local function hasCombatInBackpack()
-        local backpack = lp:FindFirstChild("Backpack")
-        if not backpack then return false end
-        return backpack:FindFirstChild("Combat") ~= nil
-    end
+        local remote = ReplicatedStorage
+            :WaitForChild("Remotes")
+            :WaitForChild("Redeem")
 
-    local function getEquippedCombat()
-        local char = lp.Character
-        if not char then return nil end
-        return char:FindFirstChild("Combat")
-    end
-
-    local function equipCombat()
-        local char = lp.Character
-        local backpack = lp:FindFirstChild("Backpack")
-        if not char or not backpack then return false end
-        
-        local combat = backpack:FindFirstChild("Combat")
-        if not combat then return false end
-        
-        local currentTool = char:FindFirstChildWhichIsA("Tool")
-        if currentTool then
-            currentTool.Parent = backpack
-        end
-        
-        combat.Parent = char
-        FARM.combatEquipped = true
-        return true
-    end
-
-    -- ---------- NPC TARGETING ----------
-    local function findNearestNPC()
-        local char = lp.Character
-        if not char then return nil end
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        if not hrp then return nil end
-        
-        local nearest = nil
-        local nearestDist = math.huge
-        
-        for _,npc in ipairs(Workspace:GetChildren()) do
-            if npc:IsA("Model") and npc:FindFirstChild("Humanoid") and npc.Humanoid.Health > 0 then
-                local name = npc.Name:lower()
-                if name:find("bandit") or name:find("enemy") or name:find("npc") then
-                    local npcHrp = npc:FindFirstChild("HumanoidRootPart")
-                    if npcHrp then
-                        local dist = (hrp.Position - npcHrp.Position).Magnitude
-                        if dist < nearestDist and dist < 100 then
-                            nearestDist = dist
-                            nearest = npc
-                        end
-                    end
-                end
-            end
-        end
-        return nearest
-    end
-
-    -- ---------- FARM LOGIC (NoClip ปิดแล้ว) ----------
-    local function attackNPC(npc)
-        local char = lp.Character
-        if not char then return end
-        
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        local humanoid = char:FindFirstChildOfClass("Humanoid")
-        local npcHrp = npc:FindFirstChild("HumanoidRootPart")
-        
-        if not hrp or not humanoid or not npcHrp then return end
-        
-        -- ตั้งทิศทาง (ไม่ใช้ lookAt เพื่อป้องกันการหมุน)
-        local direction = (npcHrp.Position - hrp.Position)
-        hrp.CFrame = CFrame.new(hrp.Position, hrp.Position + direction)
-        
-        local combat = getEquippedCombat()
-        if combat then
+        for _, code in ipairs(CODES) do
             pcall(function()
-                combat:Activate()
+                remote:InvokeServer(code)
             end)
+            task.wait(0.15)
+        end
+
+        SaveSet("Redeemed", true)
+    end
+
+    ------------------------------------------------------------------------
+    -- UI THEME
+    ------------------------------------------------------------------------
+    local THEME = {
+        GREEN = Color3.fromRGB(25,255,125),
+        RED   = Color3.fromRGB(255,40,40),
+        WHITE = Color3.fromRGB(255,255,255),
+        BLACK = Color3.fromRGB(0,0,0),
+    }
+
+    ------------------------------------------------------------------------
+    -- LAYOUT (MODEL A V1)
+    ------------------------------------------------------------------------
+    local list = scroll:FindFirstChildOfClass("UIListLayout")
+    if not list then
+        list = Instance.new("UIListLayout", scroll)
+        list.Padding = UDim.new(0,12)
+    end
+    scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+
+    local base = 0
+    for _, c in ipairs(scroll:GetChildren()) do
+        if c:IsA("GuiObject") and c ~= list then
+            base = math.max(base, c.LayoutOrder or 0)
         end
     end
 
-    -- ---------- MAIN FARM LOOP ----------
-    local function startFarmLoop()
-        if FARM.farmLoop then return end
-        
-        FARM.farmLoop = RunService.Heartbeat:Connect(function(dt)
-            if not FARM.enabled then return end
-            
-            -- ตรวจสอบว่าได้ quest แล้วหรือยัง
-            if not FARM.questAccepted and not FARM.isFlyingToQuest then
-                flyToQuest()
-                return
-            end
-            
-            -- Combat Detection & Equip
-            if hasCombatInBackpack() then
-                equipCombat()
-            end
-            
-            -- Find and Attack NPCs
-            local target = findNearestNPC()
-            if target then
-                attackNPC(target)
-            else
-                -- ถ้าไม่มีศัตรู ให้เดินหาสุ่ม (ไม่หมุน)
-                local char = lp.Character
-                local hrp = char and char:FindFirstChild("HumanoidRootPart")
-                if hrp then
-                    local currentPos = hrp.Position
-                    local randomOffset = Vector3.new(
-                        math.random(-20, 20),
-                        0,
-                        math.random(-20, 20)
-                    )
-                    local targetPos = currentPos + randomOffset
-                    
-                    -- เคลื่อนที่โดยไม่หมุน
-                    hrp.CFrame = CFrame.new(currentPos, targetPos)
-                end
-            end
-        end)
+    ------------------------------------------------------------------------
+    -- HEADER
+    ------------------------------------------------------------------------
+    local header = Instance.new("TextLabel", scroll)
+    header.Size = UDim2.new(1,0,0,36)
+    header.BackgroundTransparency = 1
+    header.Font = Enum.Font.GothamBold
+    header.TextSize = 16
+    header.TextColor3 = THEME.WHITE
+    header.TextXAlignment = Enum.TextXAlignment.Left
+    header.Text = "Farm Level 🌾"
+    header.LayoutOrder = base + 1
+
+    ------------------------------------------------------------------------
+    -- ROW
+    ------------------------------------------------------------------------
+    local row = Instance.new("Frame", scroll)
+    row.Size = UDim2.new(1,-6,0,46)
+    row.BackgroundColor3 = THEME.BLACK
+    row.LayoutOrder = base + 2
+    Instance.new("UICorner", row).CornerRadius = UDim.new(0,12)
+
+    local stroke = Instance.new("UIStroke", row)
+    stroke.Thickness = 2.2
+    stroke.Color = THEME.GREEN
+
+    local label = Instance.new("TextLabel", row)
+    label.BackgroundTransparency = 1
+    label.Position = UDim2.new(0,16,0,0)
+    label.Size = UDim2.new(1,-160,1,0)
+    label.Font = Enum.Font.GothamBold
+    label.TextSize = 13
+    label.TextColor3 = THEME.WHITE
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Text = "Auto Farm Level"
+
+    ------------------------------------------------------------------------
+    -- SWITCH
+    ------------------------------------------------------------------------
+    local sw = Instance.new("Frame", row)
+    sw.AnchorPoint = Vector2.new(1,0.5)
+    sw.Position = UDim2.new(1,-12,0.5,0)
+    sw.Size = UDim2.fromOffset(52,26)
+    sw.BackgroundColor3 = THEME.BLACK
+    Instance.new("UICorner", sw).CornerRadius = UDim.new(0,13)
+
+    local sws = Instance.new("UIStroke", sw)
+    sws.Thickness = 1.8
+
+    local knob = Instance.new("Frame", sw)
+    knob.Size = UDim2.fromOffset(22,22)
+    knob.BackgroundColor3 = THEME.WHITE
+    knob.Position = UDim2.new(0,2,0.5,-11)
+    Instance.new("UICorner", knob).CornerRadius = UDim.new(0,11)
+
+    local function update(on)
+        sws.Color = on and THEME.GREEN or THEME.RED
+        TweenService:Create(
+            knob,
+            TweenInfo.new(0.08),
+            {Position = UDim2.new(on and 1 or 0, on and -24 or 2, 0.5, -11)}
+        ):Play()
     end
 
-    local function stopFarmLoop()
-        if FARM.farmLoop then
-            FARM.farmLoop:Disconnect()
-            FARM.farmLoop = nil
-        end
-        if FARM.flyLoop then
-            FARM.flyLoop:Disconnect()
-            FARM.flyLoop = nil
-        end
-        disableAdvancedNoClip()
-        FARM.isFlyingToQuest = false
-        FARM.questAccepted = false
-        FARM.combatEquipped = false
-    end
-
-    -- ---------- UI ROW (Model A V1) ----------
-    local row=Instance.new("Frame",scroll)
-    row.Name="FARM_AutoLevelFarm"
-    row.Size=UDim2.new(1,-6,0,46)
-    row.BackgroundColor3=THEME.BLACK
-    corner(row,12); stroke(row,2.2,THEME.GREEN)
-    row.LayoutOrder=baseOrder+1
-
-    local lab=Instance.new("TextLabel",row)
-    lab.BackgroundTransparency=1
-    lab.Size=UDim2.new(1,-160,1,0)
-    lab.Position=UDim2.new(0,16,0,0)
-    lab.Font=Enum.Font.GothamBold
-    lab.TextSize=13
-    lab.TextColor3=THEME.WHITE
-    lab.TextXAlignment=Enum.TextXAlignment.Left
-    lab.Text="Auto Level Farm"
-
-    local sw=Instance.new("Frame",row)
-    sw.AnchorPoint=Vector2.new(1,0.5)
-    sw.Position=UDim2.new(1,-12,0.5,0)
-    sw.Size=UDim2.fromOffset(52,26)
-    sw.BackgroundColor3=THEME.BLACK
-    corner(sw,13)
-
-    local swStroke=Instance.new("UIStroke",sw)
-    swStroke.Thickness=1.8
-    swStroke.Color=FARM.enabled and THEME.GREEN or THEME.RED
-
-    local knob=Instance.new("Frame",sw)
-    knob.Size=UDim2.fromOffset(22,22)
-    knob.Position=UDim2.new(FARM.enabled and 1 or 0, FARM.enabled and -24 or 2, 0.5,-11)
-    knob.BackgroundColor3=THEME.WHITE
-    corner(knob,11)
-
-    local btn=Instance.new("TextButton",sw)
-    btn.BackgroundTransparency=1
-    btn.Size=UDim2.fromScale(1,1)
-    btn.Text=""
-
-    local function setFarmEnabled(v)
-        FARM.enabled = v
-        swStroke.Color = v and THEME.GREEN or THEME.RED
-        tween(knob,{Position=UDim2.new(v and 1 or 0, v and -24 or 2, 0.5,-11)},0.08)
-        
-        setSave("Home.FarmLevel.Enabled", v)
-        
-        if v then
-            startFarmLoop()
-        else
-            stopFarmLoop()
-        end
-    end
+    local btn = Instance.new("TextButton", sw)
+    btn.Size = UDim2.fromScale(1,1)
+    btn.BackgroundTransparency = 1
+    btn.Text = ""
 
     btn.MouseButton1Click:Connect(function()
-        setFarmEnabled(not FARM.enabled)
-    end)
+        enabled = not enabled
+        SaveSet("Toggle", enabled)
+        update(enabled)
 
-    -- ---------- STATUS INDICATOR ----------
-    local statusLabel = Instance.new("TextLabel", row)
-    statusLabel.BackgroundTransparency = 1
-    statusLabel.AnchorPoint = Vector2.new(1,0.5)
-    statusLabel.Position = UDim2.new(1,-70,0.5,0)
-    statusLabel.Size = UDim2.new(0,50,0,20)
-    statusLabel.Font = Enum.Font.Gotham
-    statusLabel.TextSize = 11
-    statusLabel.TextColor3 = THEME.GREEN
-    statusLabel.Text = "IDLE"
-    
-    local function updateStatus()
-        if not FARM.enabled then
-            statusLabel.Text = "OFF"
-            statusLabel.TextColor3 = THEME.RED
-        elseif FARM.isFlyingToQuest then
-            statusLabel.Text = "FLYING"
-            statusLabel.TextColor3 = Color3.fromRGB(0,150,255)
-        elseif not FARM.questAccepted then
-            statusLabel.Text = "NO QUEST"
-            statusLabel.TextColor3 = Color3.fromRGB(255,165,0)
-        elseif hasCombatInBackpack() then
-            statusLabel.Text = "NO WEAPON"
-            statusLabel.TextColor3 = Color3.fromRGB(255,165,0)
-        else
-            statusLabel.Text = "FARMING"
-            statusLabel.TextColor3 = THEME.GREEN
-        end
-    end
-    
-    task.spawn(function()
-        while task.wait(0.5) do
-            if row.Parent then
-                updateStatus()
-            else
-                break
-            end
+        if enabled then
+            redeemOncePerPlayer()
         end
     end)
 
-    -- ---------- AA1 BLOCK — Auto-run from SaveState ----------
-    task.defer(function()
-        local savedEnabled = getSave("Home.FarmLevel.Enabled", FARM.enabled)
-        
-        if savedEnabled then
-            setFarmEnabled(true)
-        end
-    end)
-
-    -- ---------- CHARACTER EVENT ----------
-    lp.CharacterAdded:Connect(function()
-        if FARM.enabled then
-            task.wait(2)
-            startFarmLoop()
-        end
-    end)
-    
-    -- ---------- CLEANUP ON SCRIPT REMOVAL ----------
-    game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui").ChildRemoved:Connect(function(child)
-        if child.Name == "UFO_HUB_X_UI" then
-            stopFarmLoop()
-        end
-    end)
+    update(enabled)
 end)
 -- ===== UFO HUB X • Home – Bomb Finder (Model A V1) =====
 
