@@ -691,7 +691,7 @@ end)
 
 registerRight("Home", function(scroll) end)
 registerRight("Settings", function(scroll) end)
---===== UFO HUB X • Home • Farm Level Codes (Model A V1) =====
+--===== UFO HUB X • Home • Farm Level + Check Level + Combat Check (Model A V1) =====
 registerRight("Home", function(scroll)
 
     ------------------------------------------------------------------------
@@ -703,10 +703,10 @@ registerRight("Home", function(scroll)
     local LP = Players.LocalPlayer
 
     ------------------------------------------------------------------------
-    -- SAVE (AA1) : 1 NAME + 1 USERID = 1 TIME
+    -- SAVE (AA1)
     ------------------------------------------------------------------------
     local SAVE = getgenv().UFOX_SAVE
-    local SCOPE = ("AA1/RedeemCodes/%d/%d/%s")
+    local SCOPE = ("AA1/FarmLevel/%d/%d/%s")
         :format(game.PlaceId, LP.UserId, LP.Name)
 
     local function SaveGet(k, d)
@@ -728,7 +728,48 @@ registerRight("Home", function(scroll)
     local enabled = SaveGet("Toggle", false)
 
     ------------------------------------------------------------------------
-    -- REDEEM CODES (แก้ / เพิ่ม ได้ตรงนี้)
+    -- CHECK LEVEL
+    ------------------------------------------------------------------------
+    local function checklevel()
+        local levelValue = LP:WaitForChild("Data"):WaitForChild("Level")
+        return levelValue.Value
+    end
+
+    ------------------------------------------------------------------------
+    -- COMBAT LIST (PRIORITY ORDER)
+    ------------------------------------------------------------------------
+    local COMBAT_STYLES = {
+        "Sanguine Art",
+        "Godhuman",
+        "Dragon Talon",
+        "Electric Claw",
+        "Sharkman Karate",
+        "Death Step",
+        "Superhuman",
+        "Dragon Breath",
+        "Water Kung Fu",
+        "Electric",
+        "Dark Step",
+        "Combat",
+    }
+
+    ------------------------------------------------------------------------
+    -- CHECK CURRENT COMBAT (ถือหมัดอะไรอยู่)
+    ------------------------------------------------------------------------
+    local function getCurrentCombat()
+        local backpack = LP:WaitForChild("Backpack")
+
+        for _, style in ipairs(COMBAT_STYLES) do
+            if not backpack:FindFirstChild(style) then
+                return style -- หมัดที่ "หายจาก Backpack" = กำลังถืออยู่
+            end
+        end
+
+        return nil
+    end
+
+    ------------------------------------------------------------------------
+    -- REDEEM CODES (ONCE)
     ------------------------------------------------------------------------
     local CODES = {
         "LIGHTNINGABUSE",
@@ -756,13 +797,8 @@ registerRight("Home", function(scroll)
         "SUB2UNCLEKIZARU",
     }
 
-    ------------------------------------------------------------------------
-    -- CORE : REDEEM ONCE PER NAME + USERID
-    ------------------------------------------------------------------------
-    local function redeemOncePerPlayer()
-        if SaveGet("Redeemed", false) then
-            return -- เคยใส่แล้ว หยุดทันที
-        end
+    local function redeemOnce()
+        if SaveGet("Redeemed", false) then return end
 
         local remote = ReplicatedStorage
             :WaitForChild("Remotes")
@@ -779,7 +815,7 @@ registerRight("Home", function(scroll)
     end
 
     ------------------------------------------------------------------------
-    -- UI THEME
+    -- THEME
     ------------------------------------------------------------------------
     local THEME = {
         GREEN = Color3.fromRGB(25,255,125),
@@ -880,7 +916,13 @@ registerRight("Home", function(scroll)
         update(enabled)
 
         if enabled then
-            redeemOncePerPlayer()
+            redeemOnce()
+
+            local lv = checklevel()
+            local combat = getCurrentCombat()
+
+            print("[FarmLevel] Level:", lv)
+            print("[FarmLevel] Combat:", combat or "None")
         end
     end)
 
