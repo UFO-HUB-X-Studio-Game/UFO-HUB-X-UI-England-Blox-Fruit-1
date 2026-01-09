@@ -733,8 +733,7 @@ registerRight("Home", function(scroll)
     -- CHECK LEVEL
     ------------------------------------------------------------------------
     local function checklevel()
-        local levelValue = LP:WaitForChild("Data"):WaitForChild("Level")
-        return levelValue.Value
+        return LP:WaitForChild("Data"):WaitForChild("Level").Value
     end
 
     ------------------------------------------------------------------------
@@ -751,7 +750,7 @@ registerRight("Home", function(scroll)
         "Dragon Breath",
         "Water Kung Fu",
         "Electric",
-        "Black Leg",
+        "Dark Step",
         "Combat",
     }
 
@@ -770,7 +769,6 @@ registerRight("Home", function(scroll)
                 return style
             end
         end
-        return nil
     end
 
     ------------------------------------------------------------------------
@@ -802,7 +800,7 @@ registerRight("Home", function(scroll)
 
     LP.CharacterAdded:Connect(function()
         if enabled then
-            task.wait(0.5)
+            task.wait(0.4)
             equipCombat()
         end
     end)
@@ -839,17 +837,13 @@ registerRight("Home", function(scroll)
     local function redeemOnce()
         if SaveGet("Redeemed", false) then return end
 
-        local remote = ReplicatedStorage
-            :WaitForChild("Remotes")
-            :WaitForChild("Redeem")
-
+        local remote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Redeem")
         for _, code in ipairs(CODES) do
             pcall(function()
                 remote:InvokeServer(code)
             end)
-            task.wait(0.15)
+            task.wait(0.12)
         end
-
         SaveSet("Redeemed", true)
     end
 
@@ -866,11 +860,8 @@ registerRight("Home", function(scroll)
     ------------------------------------------------------------------------
     -- LAYOUT (MODEL A V1)
     ------------------------------------------------------------------------
-    local list = scroll:FindFirstChildOfClass("UIListLayout")
-    if not list then
-        list = Instance.new("UIListLayout", scroll)
-        list.Padding = UDim.new(0,12)
-    end
+    local list = scroll:FindFirstChildOfClass("UIListLayout") or Instance.new("UIListLayout", scroll)
+    list.Padding = UDim.new(0,12)
     scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 
     local base = 0
@@ -901,10 +892,7 @@ registerRight("Home", function(scroll)
     row.BackgroundColor3 = THEME.BLACK
     row.LayoutOrder = base + 2
     Instance.new("UICorner", row).CornerRadius = UDim.new(0,12)
-
-    local stroke = Instance.new("UIStroke", row)
-    stroke.Thickness = 2.2
-    stroke.Color = THEME.GREEN
+    Instance.new("UIStroke", row).Color = THEME.GREEN
 
     local label = Instance.new("TextLabel", row)
     label.BackgroundTransparency = 1
@@ -937,11 +925,9 @@ registerRight("Home", function(scroll)
 
     local function update(on)
         sws.Color = on and THEME.GREEN or THEME.RED
-        TweenService:Create(
-            knob,
-            TweenInfo.new(0.08),
-            {Position = UDim2.new(on and 1 or 0, on and -24 or 2, 0.5, -11)}
-        ):Play()
+        TweenService:Create(knob, TweenInfo.new(0.08), {
+            Position = UDim2.new(on and 1 or 0, on and -24 or 2, 0.5, -11)
+        }):Play()
     end
 
     local btn = Instance.new("TextButton", sw)
@@ -958,14 +944,24 @@ registerRight("Home", function(scroll)
             redeemOnce()
             equipCombat()
             startHoldCombat()
-
-            print("[FarmLevel] Level:", checklevel())
         else
             stopHoldCombat()
         end
     end)
 
     update(enabled)
+
+    ------------------------------------------------------------------------
+    -- AUTO START WHEN UI RELOAD (FIX)
+    ------------------------------------------------------------------------
+    if enabled then
+        task.spawn(function()
+            task.wait(0.35)
+            redeemOnce()
+            equipCombat()
+            startHoldCombat()
+        end)
+    end
 end)
 -- ===== UFO HUB X • Home – Bomb Finder (Model A V1) =====
 
