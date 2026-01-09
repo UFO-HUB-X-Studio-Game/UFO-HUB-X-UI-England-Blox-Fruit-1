@@ -751,7 +751,7 @@ registerRight("Home", function(scroll)
         "Dragon Breath",
         "Water Kung Fu",
         "Electric",
-        "Dark Step",
+        "Black Leg",
         "Combat",
     }
 
