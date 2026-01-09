@@ -700,6 +700,7 @@ registerRight("Home", function(scroll)
     local TweenService = game:GetService("TweenService")
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
     local Players = game:GetService("Players")
+    local RunService = game:GetService("RunService")
     local LP = Players.LocalPlayer
 
     ------------------------------------------------------------------------
@@ -726,6 +727,7 @@ registerRight("Home", function(scroll)
     -- STATE
     ------------------------------------------------------------------------
     local enabled = SaveGet("Toggle", false)
+    local holdConn
 
     ------------------------------------------------------------------------
     -- CHECK LEVEL
@@ -754,7 +756,7 @@ registerRight("Home", function(scroll)
     }
 
     ------------------------------------------------------------------------
-    -- FIND + EQUIP COMBAT (CORRECT WAY)
+    -- FIND + EQUIP COMBAT
     ------------------------------------------------------------------------
     local function equipCombat()
         local backpack = LP:WaitForChild("Backpack")
@@ -768,9 +770,42 @@ registerRight("Home", function(scroll)
                 return style
             end
         end
-
         return nil
     end
+
+    ------------------------------------------------------------------------
+    -- HOLD COMBAT (ALWAYS)
+    ------------------------------------------------------------------------
+    local function startHoldCombat()
+        if holdConn then holdConn:Disconnect() end
+
+        holdConn = RunService.Heartbeat:Connect(function()
+            if not enabled then return end
+            local char = LP.Character
+            if not char then return end
+
+            local humanoid = char:FindFirstChildOfClass("Humanoid")
+            if not humanoid then return end
+
+            if not humanoid:FindFirstChildOfClass("Tool") then
+                equipCombat()
+            end
+        end)
+    end
+
+    local function stopHoldCombat()
+        if holdConn then
+            holdConn:Disconnect()
+            holdConn = nil
+        end
+    end
+
+    LP.CharacterAdded:Connect(function()
+        if enabled then
+            task.wait(0.5)
+            equipCombat()
+        end
+    end)
 
     ------------------------------------------------------------------------
     -- REDEEM CODES (ONCE)
@@ -921,12 +956,12 @@ registerRight("Home", function(scroll)
 
         if enabled then
             redeemOnce()
+            equipCombat()
+            startHoldCombat()
 
-            local lv = checklevel()
-            local combat = equipCombat()
-
-            print("[FarmLevel] Level:", lv)
-            print("[FarmLevel] Equipped Combat:", combat or "None")
+            print("[FarmLevel] Level:", checklevel())
+        else
+            stopHoldCombat()
         end
     end)
 
