@@ -691,7 +691,7 @@ end)
 
 registerRight("Home", function(scroll) end)
 registerRight("Settings", function(scroll) end)
--- ===== UFO HUB X • Home — Auto Level Farm + Auto Quest (MODEL A V1 + Runner Save + AA1) =====
+-- ===== UFO HUB X • Home — Auto Level Farm + Quest System (MODEL A V1 + Runner Save + AA1) =====
 registerRight("Home", function(scroll)
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
@@ -703,7 +703,7 @@ registerRight("Home", function(scroll)
     local lp = Players.LocalPlayer
 
     ------------------------------------------------------------------------
-    -- SAVE SYSTEM (Runner FS if available; fallback to getgenv in-memory)
+    -- SAVE SYSTEM
     ------------------------------------------------------------------------
     local function safePlaceName()
         local ok,info = pcall(function()
@@ -721,7 +721,7 @@ registerRight("Home", function(scroll)
                 and typeof(writefile)=="function" and typeof(readfile)=="function")
     if hasFS and not isfolder(SAVE_DIR) then pcall(makefolder, SAVE_DIR) end
 
-    getgenv().UFOX_RAM = getgenv().UFOX_RAM or {} -- fallback per-session
+    getgenv().UFOX_RAM = getgenv().UFOX_RAM or {}
     local RAM = getgenv().UFOX_RAM
 
     local function loadSave()
@@ -793,7 +793,7 @@ registerRight("Home", function(scroll)
     local function tween(o,p,d) TweenService:Create(o,TweenInfo.new(d or 0.1,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),p):Play() end
 
     -- ---------- CLEAR OLD UI ----------
-    for _,n in ipairs({"FARM_Header","FARM_AutoLevel","FARM_AutoQuest"}) do
+    for _,n in ipairs({"FARM_Header","FARM_AutoLevelFarm"}) do
         local o=scroll:FindFirstChild(n)
         if o then o:Destroy() end
     end
@@ -825,47 +825,38 @@ registerRight("Home", function(scroll)
     -- ---------- FARM STATE ----------
     _G.UFOX_FARM = _G.UFOX_FARM or {
         enabled = false,
-        autoQuest = false,
         farmLoop = nil,
-        teleportLoop = nil,
-        targetNPC = nil,
-        combatTool = nil,
-        questAccepted = false
+        flyLoop = nil,
+        questAccepted = false,
+        isFlyingToQuest = false,
+        combatEquipped = false
     }
     local FARM = _G.UFOX_FARM
 
     -- ---------- QUEST POSITIONS ----------
-    local QUEST_POSITIONS = {
-        hrbPosition = Vector3.new(1059.808, 16.429, 1548.232),
-        standingPart = Vector3.new(1058.809, 10.857, 1553.415),
-        anchorPivot = Vector3.new(1057.313, 20.371, 1556.660),
-        anchorRel = Vector3.new(0.998, -3.942, 8.732)
-    }
+    local QUEST_TARGET = Vector3.new(1059.808, 16.429, 1548.232)
 
-    -- ---------- FLIGHT SYSTEM (NoClip) ----------
-    local function enableFlightNoClip()
+    -- ---------- FLIGHT SYSTEM (Straight Line, NoClip) ----------
+    local function enableNoClip()
         local char = lp.Character
         if not char then return end
         
-        -- Enable NoClip (ทะลุทุกอย่าง)
         for _,part in ipairs(char:GetDescendants()) do
             if part:IsA("BasePart") then
                 part.CanCollide = false
             end
         end
         
-        -- Set humanoid to fly
         local humanoid = char:FindFirstChildOfClass("Humanoid")
         if humanoid then
             humanoid.PlatformStand = true
         end
     end
 
-    local function disableFlightNoClip()
+    local function disableNoClip()
         local char = lp.Character
         if not char then return end
         
-        -- Disable NoClip
         for _,part in ipairs(char:GetDescendants()) do
             if part:IsA("BasePart") then
                 part.CanCollide = true
@@ -878,28 +869,69 @@ registerRight("Home", function(scroll)
         end
     end
 
-    -- ---------- TELEPORT TO QUEST ----------
-    local function teleportToQuest()
+    -- ---------- FLY TO QUEST (Straight Line) ----------
+    local function flyToQuest()
         local char = lp.Character
-        if not char then return false end
+        if not char then return end
         
         local hrp = char:FindFirstChild("HumanoidRootPart")
-        if not hrp then return false end
+        if not hrp then return end
         
-        -- Enable flight mode
-        enableFlightNoClip()
+        enableNoClip()
+        FARM.isFlyingToQuest = true
         
-        -- Teleport to quest position (ตรงๆ ไม่ต้องบินโค้ง)
-        hrp.CFrame = CFrame.new(QUEST_POSITIONS.hrbPosition)
+        local flySpeed = 150 -- ความเร็วบิน
+        local arrivalDistance = 5 -- ระยะที่ถือว่าถึง
         
-        -- ตรวจสอบว่าไปถึงแล้ว
-        local distance = (hrp.Position - QUEST_POSITIONS.hrbPosition).Magnitude
-        return distance < 5
+        -- หาทิศทางไปยังจุดหมาย (แนวตรง)
+        local direction = (QUEST_TARGET - hrp.Position)
+        local distance = direction.Magnitude
+        direction = direction.Unit
+        
+        -- บินไปทีละน้อยๆ (Heartbeat loop)
+        if FARM.flyLoop then
+            FARM.flyLoop:Disconnect()
+        end
+        
+        FARM.flyLoop = RunService.Heartbeat:Connect(function(dt)
+            if not FARM.enabled or not FARM.isFlyingToQuest then
+                if FARM.flyLoop then
+                    FARM.flyLoop:Disconnect()
+                    FARM.flyLoop = nil
+                end
+                return
+            end
+            
+            local currentHrp = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+            if not currentHrp then return end
+            
+            local currentPos = currentHrp.Position
+            local toTarget = QUEST_TARGET - currentPos
+            local currentDist = toTarget.Magnitude
+            
+            if currentDist <= arrivalDistance then
+                -- ถึงจุดหมายแล้ว
+                FARM.isFlyingToQuest = false
+                if FARM.flyLoop then
+                    FARM.flyLoop:Disconnect()
+                    FARM.flyLoop = nil
+                end
+                acceptQuest()
+                return
+            end
+            
+            -- เคลื่อนที่แบบแนวตรง
+            local moveAmount = math.min(flySpeed * dt, currentDist)
+            local newPos = currentPos + (toTarget.Unit * moveAmount)
+            
+            currentHrp.CFrame = CFrame.lookAt(newPos, newPos + toTarget.Unit)
+        end)
     end
 
     -- ---------- AUTO ACCEPT QUEST ----------
     local function acceptQuest()
-        -- ใช้ Remote ตามที่คุณให้มา
+        if FARM.questAccepted then return true end
+        
         local args = {
             "StartQuest",
             "BanditQuest1",
@@ -914,6 +946,7 @@ registerRight("Home", function(scroll)
         if success then
             print("[UFO HUB X] Quest accepted: BanditQuest1")
             FARM.questAccepted = true
+            FARM.isFlyingToQuest = false
             return true
         else
             print("[UFO HUB X] Failed to accept quest:", result)
@@ -942,14 +975,13 @@ registerRight("Home", function(scroll)
         local combat = backpack:FindFirstChild("Combat")
         if not combat then return false end
         
-        -- ถอดอาวุธเดิมก่อน (ถ้ามี)
         local currentTool = char:FindFirstChildWhichIsA("Tool")
         if currentTool then
             currentTool.Parent = backpack
         end
         
-        -- ใส่หมัด
         combat.Parent = char
+        FARM.combatEquipped = true
         return true
     end
 
@@ -963,16 +995,14 @@ registerRight("Home", function(scroll)
         local nearest = nil
         local nearestDist = math.huge
         
-        -- หา Bandits หรือ NPC ที่ต้องฆ่า
         for _,npc in ipairs(Workspace:GetChildren()) do
-            -- เงื่อนไขหา Bandit
             if npc:IsA("Model") and npc:FindFirstChild("Humanoid") and npc.Humanoid.Health > 0 then
                 local name = npc.Name:lower()
                 if name:find("bandit") or name:find("enemy") or name:find("npc") then
                     local npcHrp = npc:FindFirstChild("HumanoidRootPart")
                     if npcHrp then
                         local dist = (hrp.Position - npcHrp.Position).Magnitude
-                        if dist < nearestDist and dist < 100 then -- ระยะ 100 studs
+                        if dist < nearestDist and dist < 100 then
                             nearestDist = dist
                             nearest = npc
                         end
@@ -994,11 +1024,9 @@ registerRight("Home", function(scroll)
         
         if not hrp or not humanoid or not npcHrp then return end
         
-        -- เดินไปหา NPC (ยังคง NoClip อยู่)
         local direction = (npcHrp.Position - hrp.Position).Unit
         hrp.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + direction)
         
-        -- โจมตีถ้ามี Combat ติดตัว
         local combat = getEquippedCombat()
         if combat then
             pcall(function()
@@ -1014,18 +1042,14 @@ registerRight("Home", function(scroll)
         FARM.farmLoop = RunService.Heartbeat:Connect(function(dt)
             if not FARM.enabled then return end
             
-            -- Auto Quest Teleport
-            if FARM.autoQuest and not FARM.questAccepted then
-                local atQuest = teleportToQuest()
-                if atQuest then
-                    task.wait(1) -- รอสักครู่
-                    acceptQuest()
-                    task.wait(1) -- รอก่อนเริ่มฟาร์ม
-                end
+            -- ตรวจสอบว่าได้ quest แล้วหรือยัง
+            if not FARM.questAccepted and not FARM.isFlyingToQuest then
+                -- ยังไม่ได้ quest → บินไปรับ quest
+                flyToQuest()
                 return
             end
             
-            -- Combat Detection
+            -- Combat Detection & Equip
             if hasCombatInBackpack() then
                 equipCombat()
             end
@@ -1035,11 +1059,10 @@ registerRight("Home", function(scroll)
             if target then
                 attackNPC(target)
             else
-                -- ถ้าไม่มีศัตรูใกล้ๆ ให้เดินหาต่อ
+                -- ถ้าไม่มีศัตรู ให้เดินหาสุ่ม
                 local char = lp.Character
                 local hrp = char and char:FindFirstChild("HumanoidRootPart")
                 if hrp then
-                    -- เดินหาสุ่มในพื้นที่
                     local randomDir = Vector3.new(
                         math.random(-50, 50),
                         0,
@@ -1056,95 +1079,61 @@ registerRight("Home", function(scroll)
             FARM.farmLoop:Disconnect()
             FARM.farmLoop = nil
         end
-        disableFlightNoClip()
+        if FARM.flyLoop then
+            FARM.flyLoop:Disconnect()
+            FARM.flyLoop = nil
+        end
+        disableNoClip()
+        FARM.isFlyingToQuest = false
         FARM.questAccepted = false
+        FARM.combatEquipped = false
     end
 
-    -- ---------- UI ROW 1: AUTO LEVEL FARM (Model A V1) ----------
-    local row1=Instance.new("Frame",scroll)
-    row1.Name="FARM_AutoLevel"
-    row1.Size=UDim2.new(1,-6,0,46)
-    row1.BackgroundColor3=THEME.BLACK
-    corner(row1,12); stroke(row1,2.2,THEME.GREEN)
-    row1.LayoutOrder=baseOrder+1
+    -- ---------- UI ROW (Model A V1) ----------
+    local row=Instance.new("Frame",scroll)
+    row.Name="FARM_AutoLevelFarm"
+    row.Size=UDim2.new(1,-6,0,46)
+    row.BackgroundColor3=THEME.BLACK
+    corner(row,12); stroke(row,2.2,THEME.GREEN)
+    row.LayoutOrder=baseOrder+1
 
-    local lab1=Instance.new("TextLabel",row1)
-    lab1.BackgroundTransparency=1
-    lab1.Size=UDim2.new(1,-160,1,0)
-    lab1.Position=UDim2.new(0,16,0,0)
-    lab1.Font=Enum.Font.GothamBold
-    lab1.TextSize=13
-    lab1.TextColor3=THEME.WHITE
-    lab1.TextXAlignment=Enum.TextXAlignment.Left
-    lab1.Text="ฟาร์ม ออโต้ level"
+    -- เปลี่ยนชื่อเป็นภาษาอังกฤษ
+    local lab=Instance.new("TextLabel",row)
+    lab.BackgroundTransparency=1
+    lab.Size=UDim2.new(1,-160,1,0)
+    lab.Position=UDim2.new(0,16,0,0)
+    lab.Font=Enum.Font.GothamBold
+    lab.TextSize=13
+    lab.TextColor3=THEME.WHITE
+    lab.TextXAlignment=Enum.TextXAlignment.Left
+    lab.Text="Auto Level Farm"  -- ภาษาอังกฤษ
 
-    local sw1=Instance.new("Frame",row1)
-    sw1.AnchorPoint=Vector2.new(1,0.5)
-    sw1.Position=UDim2.new(1,-12,0.5,0)
-    sw1.Size=UDim2.fromOffset(52,26)
-    sw1.BackgroundColor3=THEME.BLACK
-    corner(sw1,13)
+    local sw=Instance.new("Frame",row)
+    sw.AnchorPoint=Vector2.new(1,0.5)
+    sw.Position=UDim2.new(1,-12,0.5,0)
+    sw.Size=UDim2.fromOffset(52,26)
+    sw.BackgroundColor3=THEME.BLACK
+    corner(sw,13)
 
-    local swStroke1=Instance.new("UIStroke",sw1)
-    swStroke1.Thickness=1.8
-    swStroke1.Color=FARM.enabled and THEME.GREEN or THEME.RED
+    local swStroke=Instance.new("UIStroke",sw)
+    swStroke.Thickness=1.8
+    swStroke.Color=FARM.enabled and THEME.GREEN or THEME.RED
 
-    local knob1=Instance.new("Frame",sw1)
-    knob1.Size=UDim2.fromOffset(22,22)
-    knob1.Position=UDim2.new(FARM.enabled and 1 or 0, FARM.enabled and -24 or 2, 0.5,-11)
-    knob1.BackgroundColor3=THEME.WHITE
-    corner(knob1,11)
+    local knob=Instance.new("Frame",sw)
+    knob.Size=UDim2.fromOffset(22,22)
+    knob.Position=UDim2.new(FARM.enabled and 1 or 0, FARM.enabled and -24 or 2, 0.5,-11)
+    knob.BackgroundColor3=THEME.WHITE
+    corner(knob,11)
 
-    local btn1=Instance.new("TextButton",sw1)
-    btn1.BackgroundTransparency=1
-    btn1.Size=UDim2.fromScale(1,1)
-    btn1.Text=""
+    local btn=Instance.new("TextButton",sw)
+    btn.BackgroundTransparency=1
+    btn.Size=UDim2.fromScale(1,1)
+    btn.Text=""
 
-    -- ---------- UI ROW 2: AUTO QUEST TELEPORT (Model A V1) ----------
-    local row2=Instance.new("Frame",scroll)
-    row2.Name="FARM_AutoQuest"
-    row2.Size=UDim2.new(1,-6,0,46)
-    row2.BackgroundColor3=THEME.BLACK
-    corner(row2,12); stroke(row2,2.2,THEME.GREEN)
-    row2.LayoutOrder=baseOrder+2
-
-    local lab2=Instance.new("TextLabel",row2)
-    lab2.BackgroundTransparency=1
-    lab2.Size=UDim2.new(1,-160,1,0)
-    lab2.Position=UDim2.new(0,16,0,0)
-    lab2.Font=Enum.Font.GothamBold
-    lab2.TextSize=13
-    lab2.TextColor3=THEME.WHITE
-    lab2.TextXAlignment=Enum.TextXAlignment.Left
-    lab2.Text="Auto Quest Teleport"
-
-    local sw2=Instance.new("Frame",row2)
-    sw2.AnchorPoint=Vector2.new(1,0.5)
-    sw2.Position=UDim2.new(1,-12,0.5,0)
-    sw2.Size=UDim2.fromOffset(52,26)
-    sw2.BackgroundColor3=THEME.BLACK
-    corner(sw2,13)
-
-    local swStroke2=Instance.new("UIStroke",sw2)
-    swStroke2.Thickness=1.8
-    swStroke2.Color=FARM.autoQuest and THEME.GREEN or THEME.RED
-
-    local knob2=Instance.new("Frame",sw2)
-    knob2.Size=UDim2.fromOffset(22,22)
-    knob2.Position=UDim2.new(FARM.autoQuest and 1 or 0, FARM.autoQuest and -24 or 2, 0.5,-11)
-    knob2.BackgroundColor3=THEME.WHITE
-    corner(knob2,11)
-
-    local btn2=Instance.new("TextButton",sw2)
-    btn2.BackgroundTransparency=1
-    btn2.Size=UDim2.fromScale(1,1)
-    btn2.Text=""
-
-    -- ---------- SETTER FUNCTIONS ----------
     local function setFarmEnabled(v)
         FARM.enabled = v
-        swStroke1.Color = v and THEME.GREEN or THEME.RED
-        tween(knob1,{Position=UDim2.new(v and 1 or 0, v and -24 or 2, 0.5,-11)},0.08)
+        swStroke.Color = v and THEME.GREEN or THEME.RED
+        tween(knob,{Position=UDim2.new(v and 1 or 0, v and -24 or 2, 0.5,-11)},0.08)
         
         setSave("Home.FarmLevel.Enabled", v)
         
@@ -1152,45 +1141,15 @@ registerRight("Home", function(scroll)
             startFarmLoop()
         else
             stopFarmLoop()
-            FARM.autoQuest = false
-            swStroke2.Color = THEME.RED
-            tween(knob2,{Position=UDim2.new(0,2,0.5,-11)},0.08)
         end
     end
 
-    local function setAutoQuest(v)
-        if not FARM.enabled then return end -- ต้องเปิดฟาร์มก่อน
-        
-        FARM.autoQuest = v
-        swStroke2.Color = v and THEME.GREEN or THEME.RED
-        tween(knob2,{Position=UDim2.new(v and 1 or 0, v and -24 or 2, 0.5,-11)},0.08)
-        
-        setSave("Home.FarmLevel.AutoQuest", v)
-        
-        if v then
-            FARM.questAccepted = false -- รีเซ็ตสถานะ quest
-            print("[UFO HUB X] Auto Quest Teleport enabled")
-        end
-    end
-
-    -- ---------- BUTTON CONNECTIONS ----------
-    btn1.MouseButton1Click:Connect(function()
+    btn.MouseButton1Click:Connect(function()
         setFarmEnabled(not FARM.enabled)
     end)
 
-    btn2.MouseButton1Click:Connect(function()
-        if FARM.enabled then
-            setAutoQuest(not FARM.autoQuest)
-        else
-            -- แสดงข้อความว่าให้เปิดฟาร์มก่อน
-            local originalColor = row2.BackgroundColor3
-            row2.BackgroundColor3 = THEME.RED
-            tween(row2,{BackgroundColor3=originalColor},0.5)
-        end
-    end)
-
     -- ---------- STATUS INDICATOR ----------
-    local statusLabel = Instance.new("TextLabel", row1)
+    local statusLabel = Instance.new("TextLabel", row)
     statusLabel.BackgroundTransparency = 1
     statusLabel.AnchorPoint = Vector2.new(1,0.5)
     statusLabel.Position = UDim2.new(1,-70,0.5,0)
@@ -1204,9 +1163,12 @@ registerRight("Home", function(scroll)
         if not FARM.enabled then
             statusLabel.Text = "OFF"
             statusLabel.TextColor3 = THEME.RED
-        elseif FARM.autoQuest and not FARM.questAccepted then
-            statusLabel.Text = "TO QUEST"
+        elseif FARM.isFlyingToQuest then
+            statusLabel.Text = "FLYING"
             statusLabel.TextColor3 = Color3.fromRGB(0,150,255) -- สีฟ้า
+        elseif not FARM.questAccepted then
+            statusLabel.Text = "NO QUEST"
+            statusLabel.TextColor3 = Color3.fromRGB(255,165,0) -- สีส้ม
         elseif hasCombatInBackpack() then
             statusLabel.Text = "NO WEAPON"
             statusLabel.TextColor3 = Color3.fromRGB(255,165,0) -- สีส้ม
@@ -1216,9 +1178,10 @@ registerRight("Home", function(scroll)
         end
     end
     
+    -- Status update loop
     task.spawn(function()
         while task.wait(0.5) do
-            if row1.Parent then
+            if row.Parent then
                 updateStatus()
             else
                 break
@@ -1228,24 +1191,17 @@ registerRight("Home", function(scroll)
 
     -- ---------- AA1 BLOCK — Auto-run from SaveState ----------
     task.defer(function()
-        -- โหลดค่าจากเซฟ
         local savedEnabled = getSave("Home.FarmLevel.Enabled", FARM.enabled)
-        local savedAutoQuest = getSave("Home.FarmLevel.AutoQuest", FARM.autoQuest)
         
-        -- Apply โดยอัตโนมัติ
         if savedEnabled then
             setFarmEnabled(true)
-            if savedAutoQuest then
-                task.wait(0.5)
-                setAutoQuest(true)
-            end
         end
     end)
 
-    -- ---------- CLEANUP ON CHARACTER CHANGE ----------
+    -- ---------- CHARACTER EVENT ----------
     lp.CharacterAdded:Connect(function()
         if FARM.enabled then
-            task.wait(2) -- รอให้ character โหลดเสร็จ
+            task.wait(2)
             startFarmLoop()
         end
     end)
