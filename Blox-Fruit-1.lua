@@ -770,27 +770,44 @@ local flyConn
 local noclipConn
 
 ------------------------------------------------------------------------
--- WALK STATE CONTROL
+-- HUMANOID FULL LOCK (NO WALK / NO ANIM)
 ------------------------------------------------------------------------
-local savedWalkSpeed
-local savedAutoRotate
+local saved = {}
 
-local function disableWalk()
+local function lockHumanoid()
     local char = LP.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
+    local animator = hum and hum:FindFirstChildOfClass("Animator")
     if not hum then return end
-    savedWalkSpeed = hum.WalkSpeed
-    savedAutoRotate = hum.AutoRotate
-    hum.WalkSpeed = 0
+
+    saved.WalkSpeed = hum.WalkSpeed
+    saved.JumpPower = hum.JumpPower
+    saved.AutoRotate = hum.AutoRotate
+    saved.PlatformStand = hum.PlatformStand
+    saved.State = hum:GetState()
+
+    hum:ChangeState(Enum.HumanoidStateType.Physics)
+    hum.PlatformStand = true
     hum.AutoRotate = false
+    hum.WalkSpeed = 0
+    hum.JumpPower = 0
+
+    if animator then animator.Enabled = false end
 end
 
-local function restoreWalk()
+local function unlockHumanoid()
     local char = LP.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
+    local animator = hum and hum:FindFirstChildOfClass("Animator")
     if not hum then return end
-    hum.WalkSpeed = savedWalkSpeed or 16
-    hum.AutoRotate = savedAutoRotate ~= false
+
+    hum.PlatformStand = saved.PlatformStand or false
+    hum.AutoRotate = saved.AutoRotate ~= false
+    hum.WalkSpeed = saved.WalkSpeed or 16
+    hum.JumpPower = saved.JumpPower or 50
+    hum:ChangeState(Enum.HumanoidStateType.Running)
+
+    if animator then animator.Enabled = true end
 end
 
 ------------------------------------------------------------------------
@@ -902,8 +919,9 @@ end
 
 local function flyStraightTo(pos)
     if flyConn then flyConn:Disconnect() end
-    disableWalk()
-    flyConn = RunService.Heartbeat:Connect(function()
+    lockHumanoid()
+
+    flyConn = RunService.Heartbeat:Connect(function(dt)
         if not ENABLED then return end
         local c = LP.Character
         local hrp = c and c:FindFirstChild("HumanoidRootPart")
@@ -913,12 +931,11 @@ local function flyStraightTo(pos)
         if dir.Magnitude < 3 then
             hrp.Velocity = Vector3.zero
             flyConn:Disconnect()
-            restoreWalk()
+            unlockHumanoid()
             return
         end
 
-        hrp.Velocity = dir.Unit * 120
-        hrp.CFrame = CFrame.new(hrp.Position, hrp.Position + dir)
+        hrp.CFrame = hrp.CFrame + dir.Unit * (120 * dt)
     end)
 end
 
@@ -984,21 +1001,15 @@ RunService.Heartbeat:Connect(function()
             end
         end
 
-        if #targets == 0 then return end
-
         for i=1,getgenv().UFO_Combat.AttackPerStep do
             targetIndex = (targetIndex % #targets) + 1
             local t = targets[targetIndex]
-            local tp = t:FindFirstChild(getgenv().UFO_Data.LastHrpName)
-                or t:FindFirstChild("HumanoidRootPart")
-
+            local tp = t:FindFirstChild("HumanoidRootPart")
             if tp then
-                task.spawn(function()
-                    netRE.RE.RegisterAttack:FireServer(0.5)
-                    for b=1,getgenv().UFO_Combat.BatchSize do
-                        netRE.RE.RegisterHit:FireServer(tp,{},nil,getgenv().UFO_Data.CurrentKey)
-                    end
-                end)
+                netRE.RE.RegisterAttack:FireServer(0.5)
+                for b=1,getgenv().UFO_Combat.BatchSize do
+                    netRE.RE.RegisterHit:FireServer(tp,{},nil,getgenv().UFO_Data.CurrentKey)
+                end
             end
         end
     end)
@@ -1014,7 +1025,7 @@ end)
 ------------------------------------------------------------------------
 -- UI MODEL A V1
 ------------------------------------------------------------------------
-local layout = scroll:FindFirstChildOfClass("UIListLayout") or Instance.new("UIListLayout",scroll)
+local layout = Instance.new("UIListLayout",scroll)
 layout.Padding = UDim.new(0,12)
 scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 
@@ -1087,7 +1098,7 @@ btn.MouseButton1Click:Connect(function()
         stopHold()
         stopDisableDialogue()
         stopNoClip()
-        restoreWalk()
+        unlockHumanoid()
         setDialogueVisible(true)
         getgenv().UFO_Combat.Enabled = false
     end
