@@ -712,7 +712,7 @@ local function getLevel()
 end
 
 ------------------------------------------------------------------------
--- AA1 SAVE
+-- AA1 SAVE SYSTEM
 ------------------------------------------------------------------------
 local SAVE = getgenv().UFOX_SAVE
 local SCOPE = ("AA1/FarmLevel/%d/%d/%s"):format(game.PlaceId, LP.UserId, LP.Name)
@@ -731,7 +731,7 @@ local function SS(k,v)
 end
 
 ------------------------------------------------------------------------
--- THEME
+-- THEME & UI UTILS
 ------------------------------------------------------------------------
 local THEME = {
     GREEN = Color3.fromRGB(25,255,125),
@@ -761,7 +761,7 @@ local function tween(o,p,d)
 end
 
 ------------------------------------------------------------------------
--- STATE
+-- STATE & CONNECTIONS
 ------------------------------------------------------------------------
 local ENABLED = SG("Enabled", false)
 local holdConn
@@ -834,17 +834,17 @@ end
 -- REDEEM ONCE
 ------------------------------------------------------------------------
 local CODES = {
-"LIGHTNINGABUSE","KITT_RESET","SUB2OFFICIALNOOBIE","BIGNEWS","BLUXXY",
-"CHANDLER","FUDD10","ENYU_IS_PRO","FUDD10_V2","JCWK","KITTGAMING",
-"MAGICBUS","STARCODEHEO","STRAWHATMAINE","SUB2CAPTAINMAUI",
-"SUB2DAIGROCK","SUB2FER999","SUB2GAMERROBOT_EXP1",
-"SUB2GAMERROBOT_RESET1","SUB2NOOBMASTER123","TANTAIGAMING",
-"THEGREATACE","SUB2UNCLEKIZARU"
+    "LIGHTNINGABUSE","KITT_RESET","SUB2OFFICIALNOOBIE","BIGNEWS","BLUXXY",
+    "CHANDLER","FUDD10","ENYU_IS_PRO","FUDD10_V2","JCWK","KITTGAMING",
+    "MAGICBUS","STARCODEHEO","STRAWHATMAINE","SUB2CAPTAINMAUI",
+    "SUB2DAIGROCK","SUB2FER999","SUB2GAMERROBOT_EXP1",
+    "SUB2GAMERROBOT_RESET1","SUB2NOOBMASTER123","TANTAIGAMING",
+    "THEGREATACE","SUB2UNCLEKIZARU"
 }
 
 local function redeemOnce()
     if SG("Redeemed",false) then return end
-    local r = ReplicatedStorage.Remotes.Redeem
+    local r = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Redeem")
     for _,c in ipairs(CODES) do
         pcall(function() r:InvokeServer(c) end)
         task.wait(0.1)
@@ -853,22 +853,16 @@ local function redeemOnce()
 end
 
 ------------------------------------------------------------------------
--- WORLD 1 • PHASE FARM (LEVEL 1–9)
+-- FLY & NOCLIP & ANIMATION STOPPER
 ------------------------------------------------------------------------
-local QUEST_POS = Vector3.new(1059.583,16.459,1547.783)
-
--- [[ เพิ่มฟังก์ชันหยุดท่าเดินเพื่อความสวยงาม ]]
 local function stopAnims()
     local char = LP.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     if hum then
-        -- สั่งให้ตัวละครอยู่ในสถานะ Physics เพื่อหยุดท่าทางพื้นฐาน
         hum:ChangeState(Enum.HumanoidStateType.Physics)
-        
         local animator = hum:FindFirstChildOfClass("Animator")
         if animator then
             for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
-                -- หยุดเฉพาะท่าเดิน วิ่ง หรือปีน
                 if track.Name:lower():find("walk") or track.Name:lower():find("run") or track.Name:lower():find("climb") then
                     track:Stop()
                 end
@@ -883,13 +877,9 @@ local function startNoClip()
         if not ENABLED then return end
         local c = LP.Character
         if c then
-            -- เรียกใช้การหยุดท่าทางทุกเฟรมขณะฟาร์ม
             stopAnims()
-            
             for _,v in ipairs(c:GetDescendants()) do
-                if v:IsA("BasePart") then
-                    v.CanCollide = false
-                end
+                if v:IsA("BasePart") then v.CanCollide = false end
             end
         end
     end)
@@ -897,12 +887,9 @@ end
 
 local function stopNoClip()
     if noclipConn then noclipConn:Disconnect() noclipConn=nil end
-    -- คืนค่าสถานะเพื่อให้ตัวละครกลับมาเดินได้ปกติเมื่อปิดฟาร์ม
     local char = LP.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
-    if hum then
-        hum:ChangeState(Enum.HumanoidStateType.GettingUp)
-    end
+    if hum then hum:ChangeState(Enum.HumanoidStateType.GettingUp) end
 end
 
 local function flyStraightTo(pos)
@@ -916,7 +903,6 @@ local function flyStraightTo(pos)
         local dir = (pos - hrp.Position)
         if dir.Magnitude < 3 then
             hrp.Velocity = Vector3.zero
-            -- คืนค่าท่าทางเมื่อถึงที่หมาย
             local hum = c:FindFirstChildOfClass("Humanoid")
             if hum then hum:ChangeState(Enum.HumanoidStateType.GettingUp) end
             flyConn:Disconnect()
@@ -928,26 +914,29 @@ local function flyStraightTo(pos)
     end)
 end
 
+------------------------------------------------------------------------
+-- WORLD 1 • PHASE FARM
+------------------------------------------------------------------------
+local QUEST_POS = Vector3.new(1059.583,16.459,1547.783)
+
 local function takeQuest()
-    local args = {
-        "StartQuest",
-        "BanditQuest1",
-        1
-    }
+    local args = {"StartQuest", "BanditQuest1", 1}
     ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer(unpack(args))
 end
 
 local function phaseFarmWorld1()
-    if getLevel() < 1 or getLevel() > 9 then return end
-    startNoClip()
-    flyStraightTo(QUEST_POS)
-    task.delay(2.5,function()
-        takeQuest()
-    end)
+    -- ระบบจะทำงานเฉพาะเวล 1-9 เท่านั้น
+    if getLevel() >= 1 and getLevel() <= 9 then
+        startNoClip()
+        flyStraightTo(QUEST_POS)
+        task.delay(2.5, function()
+            if ENABLED then takeQuest() end
+        end)
+    end
 end
 
 ------------------------------------------------------------------------
--- ===================== SSS1 CORE (EXACT 100%) =====================
+-- ===================== SSS1 CORE (AURA) =====================
 ------------------------------------------------------------------------
 getgenv().UFO_Data = {
     CurrentKey = "6038e23a",
@@ -961,7 +950,6 @@ getgenv().UFO_Combat = {
     BatchSize = 2
 }
 
--- Hook เพื่อดักจับรหัส RegisterHit
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
     local args = {...}
@@ -999,9 +987,7 @@ RunService.Heartbeat:Connect(function()
                 for i = 1, getgenv().UFO_Combat.AttackPerStep do
                     targetIndex = (targetIndex % #allTargets) + 1
                     local target = allTargets[targetIndex]
-                    local targetPart =
-                        target:FindFirstChild(getgenv().UFO_Data.LastHrpName)
-                        or target:FindFirstChild("HumanoidRootPart")
+                    local targetPart = target:FindFirstChild(getgenv().UFO_Data.LastHrpName) or target:FindFirstChild("HumanoidRootPart")
 
                     task.spawn(function()
                         netRE:WaitForChild("RE/RegisterAttack"):FireServer(0.5)
@@ -1027,7 +1013,7 @@ RunService.Stepped:Connect(function()
 end)
 
 ------------------------------------------------------------------------
--- UI MODEL A V1
+-- UI GENERATION
 ------------------------------------------------------------------------
 local layout = scroll:FindFirstChildOfClass("UIListLayout") or Instance.new("UIListLayout",scroll)
 layout.Padding = UDim.new(0,12)
@@ -1091,18 +1077,20 @@ btn.MouseButton1Click:Connect(function()
     refresh()
 
     if ENABLED then
+        -- เปิดระบบทั้งหมด
+        getgenv().UFO_Combat.Enabled = true -- เปิด Aura ทันทีโดยไม่สนเลเวล
         redeemOnce()
         equipCombat()
         startHold()
         startDisableDialogue()
-        phaseFarmWorld1()
-        getgenv().UFO_Combat.Enabled = true
+        phaseFarmWorld1() -- ระบบวาร์ป/รับเควสจะเช็คเลเวลข้างในเอง
     else
+        -- ปิดระบบทั้งหมด
+        getgenv().UFO_Combat.Enabled = false
         stopHold()
         stopDisableDialogue()
         stopNoClip()
         setDialogueVisible(true)
-        getgenv().UFO_Combat.Enabled = false
     end
 end)
 
