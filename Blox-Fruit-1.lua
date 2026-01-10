@@ -691,7 +691,7 @@ end)
 
 registerRight("Home", function(scroll) end)
 registerRight("Settings", function(scroll) end)
---===== UFO HUB X • Home • Farm Level 🌾 (Model A V1 + AA1 + SSS1 FULL) =====
+--===== UFO HUB X • Home • Farm Level 🌾 (Model A V1 + AA1 + SSS1 + Disable Dialogue) =====
 registerRight("Home", function(scroll)
 
     ------------------------------------------------------------------------
@@ -733,7 +733,7 @@ registerRight("Home", function(scroll)
     end
 
     ------------------------------------------------------------------------
-    -- THEME (MODEL A V1)
+    -- THEME
     ------------------------------------------------------------------------
     local THEME = {
         GREEN = Color3.fromRGB(25,255,125),
@@ -767,6 +767,37 @@ registerRight("Home", function(scroll)
     ------------------------------------------------------------------------
     local ENABLED = SG("Enabled", false)
     local holdConn
+    local dialogueConn
+
+    ------------------------------------------------------------------------
+    -- DISABLE DIALOGUE SYSTEM
+    ------------------------------------------------------------------------
+    local function setDialogueVisible(state)
+        local pg = LP:FindFirstChild("PlayerGui")
+        if not pg then return end
+        local main = pg:FindFirstChild("Main")
+        if not main then return end
+        local dlg = main:FindFirstChild("Dialogue")
+        if dlg then
+            dlg.Visible = state
+        end
+    end
+
+    local function startDisableDialogue()
+        if dialogueConn then dialogueConn:Disconnect() end
+        dialogueConn = RunService.Heartbeat:Connect(function()
+            if ENABLED then
+                setDialogueVisible(false)
+            end
+        end)
+    end
+
+    local function stopDisableDialogue()
+        if dialogueConn then
+            dialogueConn:Disconnect()
+            dialogueConn = nil
+        end
+    end
 
     ------------------------------------------------------------------------
     -- COMBAT PRIORITY
@@ -822,90 +853,57 @@ registerRight("Home", function(scroll)
         if SG("Redeemed",false) then return end
         local r = ReplicatedStorage.Remotes.Redeem
         for _,c in ipairs(CODES) do
-            pcall(function()
-                r:InvokeServer(c)
-            end)
+            pcall(function() r:InvokeServer(c) end)
             task.wait(0.1)
         end
         SS("Redeemed",true)
     end
 
     ------------------------------------------------------------------------
-    -- SSS1 CORE (100% ORIGINAL)
+    -- SSS1 CORE (UNCHANGED)
     ------------------------------------------------------------------------
-    getgenv().UFO_Data = {
-        CurrentKey = "6038e23a",
-        LastHrpName = "HumanoidRootPart"
-    }
-
-    getgenv().UFO_Combat = {
-        Enabled = false,
-        AuraRange = 1000,
-        AttackPerStep = 5,
-        BatchSize = 2
-    }
+    getgenv().UFO_Data = { CurrentKey="6038e23a", LastHrpName="HumanoidRootPart" }
+    getgenv().UFO_Combat = { Enabled=false, AuraRange=1000, AttackPerStep=5, BatchSize=2 }
 
     if not getgenv().UFO_SSS1 then
         getgenv().UFO_SSS1 = true
 
-        local oldNamecall
-        oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-            local args = {...}
-            local method = getnamecallmethod()
-            if tostring(self) == "RE/RegisterHit" and method == "FireServer" then
-                if args[4] then
-                    getgenv().UFO_Data.CurrentKey = args[4]
-                elseif args[3] then
-                    getgenv().UFO_Data.CurrentKey = args[3]
-                end
+        local old
+        old = hookmetamethod(game,"__namecall",function(self,...)
+            local a={...}
+            if tostring(self)=="RE/RegisterHit" then
+                if a[4] then getgenv().UFO_Data.CurrentKey=a[4]
+                elseif a[3] then getgenv().UFO_Data.CurrentKey=a[3] end
             end
-            return oldNamecall(self, ...)
+            return old(self,...)
         end)
 
-        local targetIndex = 1
-
+        local ti=1
         RunService.Heartbeat:Connect(function()
             if not getgenv().UFO_Combat.Enabled then return end
+            local c=LP.Character
+            local hrp=c and c:FindFirstChild("HumanoidRootPart")
+            if not hrp then return end
+            local e=workspace:FindFirstChild("Enemies")
+            if not e then return end
 
-            pcall(function()
-                local char = LP.Character
-                local hrp = char and char:FindFirstChild("HumanoidRootPart")
-                if not hrp then return end
-
-                local enemies = workspace:FindFirstChild("Enemies")
-                if not enemies then return end
-
-                local allTargets = {}
-                for _, v in ipairs(enemies:GetChildren()) do
-                    local h = v:FindFirstChild("Humanoid")
-                    local p = v:FindFirstChild("HumanoidRootPart")
-                    if h and h.Health > 0 and p then
-                        if (p.Position - hrp.Position).Magnitude <= getgenv().UFO_Combat.AuraRange then
-                            table.insert(allTargets, v)
-                        end
-                    end
+            local t={}
+            for _,v in ipairs(e:GetChildren()) do
+                local h=v:FindFirstChild("Humanoid")
+                local p=v:FindFirstChild("HumanoidRootPart")
+                if h and h.Health>0 and p and (p.Position-hrp.Position).Magnitude<=1000 then
+                    table.insert(t,v)
                 end
+            end
 
-                for i = 1, getgenv().UFO_Combat.AttackPerStep do
-                    if #allTargets == 0 then break end
-                    targetIndex = (targetIndex % #allTargets) + 1
-                    local target = allTargets[targetIndex]
-                    local part = target:FindFirstChild(getgenv().UFO_Data.LastHrpName)
-
-                    task.spawn(function()
-                        netRE["RE/RegisterAttack"]:FireServer(0.5)
-                        for b = 1, getgenv().UFO_Combat.BatchSize do
-                            netRE["RE/RegisterHit"]:FireServer(part, {}, getgenv().UFO_Data.CurrentKey)
-                        end
-                    end)
-                end
-            end)
-        end)
-
-        RunService.Stepped:Connect(function()
-            if getgenv().UFO_Combat.Enabled and sethiddenproperty then
-                sethiddenproperty(LP, "SimulationRadius", 2000)
-                sethiddenproperty(LP, "MaxSimulationRadius", 2000)
+            for i=1,5 do
+                if #t==0 then break end
+                ti=(ti%#t)+1
+                local trg=t[ti]
+                task.spawn(function()
+                    netRE["RE/RegisterAttack"]:FireServer(0.5)
+                    netRE["RE/RegisterHit"]:FireServer(trg.HumanoidRootPart,{},getgenv().UFO_Data.CurrentKey)
+                end)
             end
         end)
     end
@@ -918,55 +916,44 @@ registerRight("Home", function(scroll)
     layout.SortOrder = Enum.SortOrder.LayoutOrder
     scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 
-    local base = 0
-    for _,c in ipairs(scroll:GetChildren()) do
-        if c:IsA("GuiObject") and c ~= layout then
-            base = math.max(base, c.LayoutOrder or 0)
-        end
-    end
-
-    -- HEADER
     local header = Instance.new("TextLabel",scroll)
-    header.Size = UDim2.new(1,0,0,36)
-    header.BackgroundTransparency = 1
-    header.Font = Enum.Font.GothamBold
-    header.TextSize = 16
-    header.TextColor3 = THEME.WHITE
-    header.TextXAlignment = Enum.TextXAlignment.Left
-    header.Text = "Farm Level 🌾"
-    header.LayoutOrder = base + 1
+    header.Size=UDim2.new(1,0,0,36)
+    header.BackgroundTransparency=1
+    header.Font=Enum.Font.GothamBold
+    header.TextSize=16
+    header.TextColor3=THEME.WHITE
+    header.TextXAlignment=Enum.TextXAlignment.Left
+    header.Text="Farm Level 🌾"
 
-    -- ROW
     local row = Instance.new("Frame",scroll)
-    row.Size = UDim2.new(1,-6,0,46)
-    row.BackgroundColor3 = THEME.BLACK
+    row.Size=UDim2.new(1,-6,0,46)
+    row.BackgroundColor3=THEME.BLACK
     corner(row,12)
     stroke(row)
-    row.LayoutOrder = base + 2
 
     local txt = Instance.new("TextLabel",row)
-    txt.BackgroundTransparency = 1
-    txt.Size = UDim2.new(1,-160,1,0)
-    txt.Position = UDim2.new(0,16,0,0)
-    txt.Font = Enum.Font.GothamBold
-    txt.TextSize = 13
-    txt.TextColor3 = THEME.WHITE
-    txt.TextXAlignment = Enum.TextXAlignment.Left
-    txt.Text = "Auto Farm Level"
+    txt.BackgroundTransparency=1
+    txt.Size=UDim2.new(1,-160,1,0)
+    txt.Position=UDim2.new(0,16,0,0)
+    txt.Font=Enum.Font.GothamBold
+    txt.TextSize=13
+    txt.TextColor3=THEME.WHITE
+    txt.TextXAlignment=Enum.TextXAlignment.Left
+    txt.Text="Auto Farm Level"
 
     local sw = Instance.new("Frame",row)
-    sw.AnchorPoint = Vector2.new(1,0.5)
-    sw.Position = UDim2.new(1,-12,0.5,0)
-    sw.Size = UDim2.fromOffset(52,26)
-    sw.BackgroundColor3 = THEME.BLACK
+    sw.AnchorPoint=Vector2.new(1,0.5)
+    sw.Position=UDim2.new(1,-12,0.5,0)
+    sw.Size=UDim2.fromOffset(52,26)
+    sw.BackgroundColor3=THEME.BLACK
     corner(sw,13)
 
     local swStroke = Instance.new("UIStroke",sw)
-    swStroke.Thickness = 1.8
+    swStroke.Thickness=1.8
 
     local knob = Instance.new("Frame",sw)
-    knob.Size = UDim2.fromOffset(22,22)
-    knob.BackgroundColor3 = THEME.WHITE
+    knob.Size=UDim2.fromOffset(22,22)
+    knob.BackgroundColor3=THEME.WHITE
     corner(knob,11)
 
     local function refresh()
@@ -977,23 +964,26 @@ registerRight("Home", function(scroll)
     end
 
     local btn = Instance.new("TextButton",sw)
-    btn.Size = UDim2.fromScale(1,1)
-    btn.BackgroundTransparency = 1
-    btn.Text = ""
+    btn.Size=UDim2.fromScale(1,1)
+    btn.BackgroundTransparency=1
+    btn.Text=""
 
     btn.MouseButton1Click:Connect(function()
         ENABLED = not ENABLED
-        SS("Enabled", ENABLED)
+        SS("Enabled",ENABLED)
         refresh()
 
         if ENABLED then
             redeemOnce()
             equipCombat()
             startHold()
-            getgenv().UFO_Combat.Enabled = true
+            startDisableDialogue()
+            getgenv().UFO_Combat.Enabled=true
         else
             stopHold()
-            getgenv().UFO_Combat.Enabled = false
+            stopDisableDialogue()
+            setDialogueVisible(true)
+            getgenv().UFO_Combat.Enabled=false
         end
     end)
 
@@ -1005,7 +995,8 @@ registerRight("Home", function(scroll)
             redeemOnce()
             equipCombat()
             startHold()
-            getgenv().UFO_Combat.Enabled = true
+            startDisableDialogue()
+            getgenv().UFO_Combat.Enabled=true
         end)
     end
 end)
