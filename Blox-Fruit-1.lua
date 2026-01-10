@@ -770,7 +770,7 @@ registerRight("Home", function(scroll)
     local dialogueConn
 
     ------------------------------------------------------------------------
-    -- DISABLE DIALOGUE SYSTEM
+    -- DISABLE DIALOGUE SYSTEM (PlayerGui > Main > Dialogue)
     ------------------------------------------------------------------------
     local function setDialogueVisible(state)
         local pg = LP:FindFirstChild("PlayerGui")
@@ -860,60 +860,96 @@ registerRight("Home", function(scroll)
     end
 
     ------------------------------------------------------------------------
-    -- SSS1 CORE (UNCHANGED)
+    -- ===================== SSS1 CORE (EXACT 100%) =====================
     ------------------------------------------------------------------------
-    getgenv().UFO_Data = { CurrentKey="6038e23a", LastHrpName="HumanoidRootPart" }
-    getgenv().UFO_Combat = { Enabled=false, AuraRange=1000, AttackPerStep=5, BatchSize=2 }
+    local LP = game:GetService("Players").LocalPlayer
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local RunService = game:GetService("RunService")
+    local netRE = ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Net")
 
-    if not getgenv().UFO_SSS1 then
-        getgenv().UFO_SSS1 = true
+    getgenv().UFO_Data = {
+        CurrentKey = "6038e23a",
+        LastHrpName = "HumanoidRootPart"
+    }
 
-        local old
-        old = hookmetamethod(game,"__namecall",function(self,...)
-            local a={...}
-            if tostring(self)=="RE/RegisterHit" then
-                if a[4] then getgenv().UFO_Data.CurrentKey=a[4]
-                elseif a[3] then getgenv().UFO_Data.CurrentKey=a[3] end
-            end
-            return old(self,...)
-        end)
+    getgenv().UFO_Combat = {
+        Enabled = false,
+        AuraRange = 1000,
+        AttackPerStep = 5,
+        BatchSize = 2
+    }
 
-        local ti=1
-        RunService.Heartbeat:Connect(function()
-            if not getgenv().UFO_Combat.Enabled then return end
-            local c=LP.Character
-            local hrp=c and c:FindFirstChild("HumanoidRootPart")
+    local oldNamecall
+    oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+        local args = {...}
+        local method = getnamecallmethod()
+        if tostring(self) == "RE/RegisterHit" and method == "FireServer" then
+            if args[4] then getgenv().UFO_Data.CurrentKey = args[4]
+            elseif args[3] then getgenv().UFO_Data.CurrentKey = args[3] end
+        end
+        return oldNamecall(self, ...)
+    end)
+
+    local targetIndex = 1
+
+    RunService.Heartbeat:Connect(function()
+        if not getgenv().UFO_Combat.Enabled then return end
+        pcall(function()
+            local char = LP.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
             if not hrp then return end
-            local e=workspace:FindFirstChild("Enemies")
-            if not e then return end
 
-            local t={}
-            for _,v in ipairs(e:GetChildren()) do
-                local h=v:FindFirstChild("Humanoid")
-                local p=v:FindFirstChild("HumanoidRootPart")
-                if h and h.Health>0 and p and (p.Position-hrp.Position).Magnitude<=1000 then
-                    table.insert(t,v)
+            local enemies = workspace:FindFirstChild("Enemies")
+            if enemies then
+                local allTargets = {}
+                for _, v in ipairs(enemies:GetChildren()) do
+                    local eHum = v:FindFirstChild("Humanoid")
+                    local eHrp = v:FindFirstChild("HumanoidRootPart")
+                    if eHum and eHum.Health > 0 and eHrp then
+                        if (eHrp.Position - hrp.Position).Magnitude <= getgenv().UFO_Combat.AuraRange then
+                            table.insert(allTargets, v)
+                        end
+                    end
+                end
+
+                if #allTargets > 0 then
+                    for i = 1, getgenv().UFO_Combat.AttackPerStep do
+                        targetIndex = (targetIndex % #allTargets) + 1
+                        local target = allTargets[targetIndex]
+                        local targetPart =
+                            target:FindFirstChild(getgenv().UFO_Data.LastHrpName)
+                            or target:FindFirstChild("HumanoidRootPart")
+
+                        task.spawn(function()
+                            netRE:WaitForChild("RE/RegisterAttack"):FireServer(0.5)
+                            for b = 1, getgenv().UFO_Combat.BatchSize do
+                                netRE:WaitForChild("RE/RegisterHit"):FireServer(unpack({
+                                    [1] = targetPart,
+                                    [2] = {},
+                                    [4] = getgenv().UFO_Data.CurrentKey
+                                }))
+                            end
+                        end)
+                    end
                 end
             end
-
-            for i=1,5 do
-                if #t==0 then break end
-                ti=(ti%#t)+1
-                local trg=t[ti]
-                task.spawn(function()
-                    netRE["RE/RegisterAttack"]:FireServer(0.5)
-                    netRE["RE/RegisterHit"]:FireServer(trg.HumanoidRootPart,{},getgenv().UFO_Data.CurrentKey)
-                end)
-            end
         end)
-    end
+    end)
+
+    RunService.Stepped:Connect(function()
+        if getgenv().UFO_Combat.Enabled and sethiddenproperty then
+            sethiddenproperty(LP, "SimulationRadius", 2000)
+            sethiddenproperty(LP, "MaxSimulationRadius", 2000)
+        end
+    end)
+
+    print("UFO HUB X V8: Stable Aura Active! (Range: 1000m / No Warp)")
 
     ------------------------------------------------------------------------
     -- UI (MODEL A V1)
     ------------------------------------------------------------------------
     local layout = scroll:FindFirstChildOfClass("UIListLayout") or Instance.new("UIListLayout",scroll)
     layout.Padding = UDim.new(0,12)
-    layout.SortOrder = Enum.SortOrder.LayoutOrder
     scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 
     local header = Instance.new("TextLabel",scroll)
@@ -978,12 +1014,12 @@ registerRight("Home", function(scroll)
             equipCombat()
             startHold()
             startDisableDialogue()
-            getgenv().UFO_Combat.Enabled=true
+            getgenv().UFO_Combat.Enabled = true
         else
             stopHold()
             stopDisableDialogue()
             setDialogueVisible(true)
-            getgenv().UFO_Combat.Enabled=false
+            getgenv().UFO_Combat.Enabled = false
         end
     end)
 
@@ -996,7 +1032,7 @@ registerRight("Home", function(scroll)
             equipCombat()
             startHold()
             startDisableDialogue()
-            getgenv().UFO_Combat.Enabled=true
+            getgenv().UFO_Combat.Enabled = true
         end)
     end
 end)
