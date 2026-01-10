@@ -957,88 +957,90 @@ local function phaseFarmWorld1()
 end
 
 ------------------------------------------------------------------------
--- ===================== SSS1 CORE (EXACT 100%) =====================
-------------------------------------------------------------------------
-local LP = game:GetService("Players").LocalPlayer
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
-local netRE = ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Net")
+    -- ===================== SSS1 CORE (EXACT 100%) =====================
+    ------------------------------------------------------------------------
+    local LP = game:GetService("Players").LocalPlayer
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local RunService = game:GetService("RunService")
+    local netRE = ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Net")
 
-getgenv().UFO_Data = {
-    CurrentKey = "6038e23a",
-    LastHrpName = "HumanoidRootPart"
-}
+    getgenv().UFO_Data = {
+        CurrentKey = "6038e23a",
+        LastHrpName = "HumanoidRootPart"
+    }
 
-getgenv().UFO_Combat = {
-    Enabled = false,
-    AuraRange = 1000,
-    AttackPerStep = 5,
-    BatchSize = 2
-}
+    getgenv().UFO_Combat = {
+        Enabled = false,
+        AuraRange = 1000,
+        AttackPerStep = 5,
+        BatchSize = 2
+    }
 
-local oldNamecall
-oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-    local args = {...}
-    local method = getnamecallmethod()
-    if tostring(self) == "RE/RegisterHit" and method == "FireServer" then
-        if args[4] then getgenv().UFO_Data.CurrentKey = args[4]
-        elseif args[3] then getgenv().UFO_Data.CurrentKey = args[3] end
-    end
-    return oldNamecall(self, ...)
-end)
+    local oldNamecall
+    oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+        local args = {...}
+        local method = getnamecallmethod()
+        if tostring(self) == "RE/RegisterHit" and method == "FireServer" then
+            if args[4] then getgenv().UFO_Data.CurrentKey = args[4]
+            elseif args[3] then getgenv().UFO_Data.CurrentKey = args[3] end
+        end
+        return oldNamecall(self, ...)
+    end)
 
-local targetIndex = 1
+    local targetIndex = 1
 
-RunService.Heartbeat:Connect(function()
-    if not getgenv().UFO_Combat.Enabled then return end
-    pcall(function()
-        local char = LP.Character
-        local hrp = char and char:FindFirstChild("HumanoidRootPart")
-        if not hrp then return end
+    RunService.Heartbeat:Connect(function()
+        if not getgenv().UFO_Combat.Enabled then return end
+        pcall(function()
+            local char = LP.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            if not hrp then return end
 
-        local enemies = workspace:FindFirstChild("Enemies")
-        if enemies then
-            local allTargets = {}
-            for _, v in ipairs(enemies:GetChildren()) do
-                local eHum = v:FindFirstChild("Humanoid")
-                local eHrp = v:FindFirstChild("HumanoidRootPart")
-                if eHum and eHum.Health > 0 and eHrp then
-                    if (eHrp.Position - hrp.Position).Magnitude <= getgenv().UFO_Combat.AuraRange then
-                        table.insert(allTargets, v)
+            local enemies = workspace:FindFirstChild("Enemies")
+            if enemies then
+                local allTargets = {}
+                for _, v in ipairs(enemies:GetChildren()) do
+                    local eHum = v:FindFirstChild("Humanoid")
+                    local eHrp = v:FindFirstChild("HumanoidRootPart")
+                    if eHum and eHum.Health > 0 and eHrp then
+                        if (eHrp.Position - hrp.Position).Magnitude <= getgenv().UFO_Combat.AuraRange then
+                            table.insert(allTargets, v)
+                        end
+                    end
+                end
+
+                if #allTargets > 0 then
+                    for i = 1, getgenv().UFO_Combat.AttackPerStep do
+                        targetIndex = (targetIndex % #allTargets) + 1
+                        local target = allTargets[targetIndex]
+                        local targetPart =
+                            target:FindFirstChild(getgenv().UFO_Data.LastHrpName)
+                            or target:FindFirstChild("HumanoidRootPart")
+
+                        task.spawn(function()
+                            netRE:WaitForChild("RE/RegisterAttack"):FireServer(0.5)
+                            for b = 1, getgenv().UFO_Combat.BatchSize do
+                                netRE:WaitForChild("RE/RegisterHit"):FireServer(unpack({
+                                    [1] = targetPart,
+                                    [2] = {},
+                                    [4] = getgenv().UFO_Data.CurrentKey
+                                }))
+                            end
+                        end)
                     end
                 end
             end
+        end)
+    end)
 
-            if #allTargets > 0 then
-                for i = 1, getgenv().UFO_Combat.AttackPerStep do
-                    targetIndex = (targetIndex % #allTargets) + 1
-                    local target = allTargets[targetIndex]
-                    local targetPart =
-                        target:FindFirstChild(getgenv().UFO_Data.LastHrpName)
-                        or target:FindFirstChild("HumanoidRootPart")
-
-                    task.spawn(function()
-                        netRE:WaitForChild("RE/RegisterAttack"):FireServer(0.5)
-                        for b = 1, getgenv().UFO_Combat.BatchSize do
-                            netRE:WaitForChild("RE/RegisterHit"):FireServer(unpack({
-                                [1] = targetPart,
-                                [2] = {},
-                                [4] = getgenv().UFO_Data.CurrentKey
-                            }))
-                        end
-                    end)
-                end
-            end
+    RunService.Stepped:Connect(function()
+        if getgenv().UFO_Combat.Enabled and sethiddenproperty then
+            sethiddenproperty(LP, "SimulationRadius", 2000)
+            sethiddenproperty(LP, "MaxSimulationRadius", 2000)
         end
     end)
-end)
 
-RunService.Stepped:Connect(function()
-    if getgenv().UFO_Combat.Enabled and sethiddenproperty then
-        sethiddenproperty(LP, "SimulationRadius", 2000)
-        sethiddenproperty(LP, "MaxSimulationRadius", 2000)
-    end
-end)
+    print("UFO HUB X V8: Stable Aura Active! (Range: 1000m / No Warp)")
 
 ------------------------------------------------------------------------
 -- UI MODEL A V1
