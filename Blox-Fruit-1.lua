@@ -853,16 +853,9 @@ local function redeemOnce()
 end
 
 ------------------------------------------------------------------------
--- WORLD 1 • PHASE FARM (LEVEL 1–9) [FIXED 100%]
+-- WORLD 1 • PHASE FARM (LEVEL 1–9)
 ------------------------------------------------------------------------
 local QUEST_POS = Vector3.new(1059.583,16.459,1547.783)
-
-local function waitChar()
-    if LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
-        return LP.Character
-    end
-    return LP.CharacterAdded:Wait()
-end
 
 local function startNoClip()
     if noclipConn then noclipConn:Disconnect() end
@@ -885,57 +878,50 @@ end
 
 local function flyStraightTo(pos)
     if flyConn then flyConn:Disconnect() end
-
-    local char = waitChar()
-    local hrp = char:WaitForChild("HumanoidRootPart")
-    local hum = char:WaitForChild("Humanoid")
-    hum:ChangeState(Enum.HumanoidStateType.Physics)
-
-    local bv = Instance.new("BodyVelocity")
-    bv.MaxForce = Vector3.new(1e9,1e9,1e9)
-    bv.Velocity = Vector3.zero
-    bv.Parent = hrp
-
-    local ao = Instance.new("AlignOrientation")
-    ao.MaxTorque = 1e9
-    ao.Responsiveness = 200
-    ao.Parent = hrp
-
     flyConn = RunService.Heartbeat:Connect(function()
-        if not ENABLED then
-            bv:Destroy()
-            ao:Destroy()
-            flyConn:Disconnect()
-            return
-        end
+        if not ENABLED then return end
+        local c = LP.Character
+        local hrp = c and c:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
 
         local dir = (pos - hrp.Position)
-        if dir.Magnitude <= 6 then
-            bv:Destroy()
-            ao:Destroy()
+        if dir.Magnitude < 3 then
+            hrp.Velocity = Vector3.zero
             flyConn:Disconnect()
-
-            task.wait(0.2)
-            ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_")
-                :InvokeServer("StartQuest","BanditQuest1",1)
             return
         end
 
-        bv.Velocity = dir.Unit * 140
-        ao.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + dir)
+        hrp.Velocity = dir.Unit * 120
+        hrp.CFrame = CFrame.new(hrp.Position, hrp.Position + dir)
     end)
 end
 
+local function takeQuest()
+    local args = {
+        "StartQuest",
+        "BanditQuest1",
+        1
+    }
+    ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer(unpack(args))
+end
+
 local function phaseFarmWorld1()
-    local lv = getLevel()
-    if lv < 1 or lv > 9 then return end
+    if getLevel() < 1 or getLevel() > 9 then return end
     startNoClip()
     flyStraightTo(QUEST_POS)
+    task.delay(2.5,function()
+        takeQuest()
+    end)
 end
 
 ------------------------------------------------------------------------
 -- ===================== SSS1 CORE (EXACT 100%) =====================
 ------------------------------------------------------------------------
+local LP = game:GetService("Players").LocalPlayer
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local netRE = ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Net")
+
 getgenv().UFO_Data = {
     CurrentKey = "6038e23a",
     LastHrpName = "HumanoidRootPart"
@@ -969,31 +955,38 @@ RunService.Heartbeat:Connect(function()
         if not hrp then return end
 
         local enemies = workspace:FindFirstChild("Enemies")
-        if not enemies then return end
-
-        local allTargets = {}
-        for _, v in ipairs(enemies:GetChildren()) do
-            local eHum = v:FindFirstChild("Humanoid")
-            local eHrp = v:FindFirstChild("HumanoidRootPart")
-            if eHum and eHum.Health > 0 and eHrp then
-                if (eHrp.Position - hrp.Position).Magnitude <= getgenv().UFO_Combat.AuraRange then
-                    table.insert(allTargets, v)
+        if enemies then
+            local allTargets = {}
+            for _, v in ipairs(enemies:GetChildren()) do
+                local eHum = v:FindFirstChild("Humanoid")
+                local eHrp = v:FindFirstChild("HumanoidRootPart")
+                if eHum and eHum.Health > 0 and eHrp then
+                    if (eHrp.Position - hrp.Position).Magnitude <= getgenv().UFO_Combat.AuraRange then
+                        table.insert(allTargets, v)
+                    end
                 end
             end
-        end
 
-        for i = 1, getgenv().UFO_Combat.AttackPerStep do
-            if #allTargets == 0 then break end
-            targetIndex = (targetIndex % #allTargets) + 1
-            local target = allTargets[targetIndex]
-            task.spawn(function()
-                netRE:WaitForChild("RE/RegisterAttack"):FireServer(0.5)
-                for b = 1, getgenv().UFO_Combat.BatchSize do
-                    netRE:WaitForChild("RE/RegisterHit"):FireServer(
-                        target.HumanoidRootPart,{},getgenv().UFO_Data.CurrentKey
-                    )
+            if #allTargets > 0 then
+                for i = 1, getgenv().UFO_Combat.AttackPerStep do
+                    targetIndex = (targetIndex % #allTargets) + 1
+                    local target = allTargets[targetIndex]
+                    local targetPart =
+                        target:FindFirstChild(getgenv().UFO_Data.LastHrpName)
+                        or target:FindFirstChild("HumanoidRootPart")
+
+                    task.spawn(function()
+                        netRE:WaitForChild("RE/RegisterAttack"):FireServer(0.5)
+                        for b = 1, getgenv().UFO_Combat.BatchSize do
+                            netRE:WaitForChild("RE/RegisterHit"):FireServer(unpack({
+                                [1] = targetPart,
+                                [2] = {},
+                                [4] = getgenv().UFO_Data.CurrentKey
+                            }))
+                        end
+                    end)
                 end
-            end)
+            end
         end
     end)
 end)
