@@ -933,12 +933,13 @@ getgenv().UFO_Data = {
 }
 
 getgenv().UFO_Combat = {
-    Enabled = false,
+    Enabled = ENABLED, -- ให้ทำงานตามค่า Save ตั้งแต่รันสคริปต์
     AuraRange = 1000,
     AttackPerStep = 5,
     BatchSize = 2
 }
 
+-- Hook เพื่อดักจับ Key อัตโนมัติ
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
     local args = {...}
@@ -952,6 +953,7 @@ end)
 
 local targetIndex = 1
 
+-- ระบบ Aura Loop
 RunService.Heartbeat:Connect(function()
     if not getgenv().UFO_Combat.Enabled then return end
     pcall(function()
@@ -994,6 +996,7 @@ RunService.Heartbeat:Connect(function()
     end)
 end)
 
+-- ขยายระยะการโจมตี
 RunService.Stepped:Connect(function()
     if getgenv().UFO_Combat.Enabled and sethiddenproperty then
         sethiddenproperty(LP, "SimulationRadius", 2000)
@@ -1065,15 +1068,16 @@ btn.MouseButton1Click:Connect(function()
     SS("Enabled",ENABLED)
     refresh()
 
+    -- ควบคุมสถานะ Aura (SSS1) ให้ตรงกับปุ่มทันที
+    getgenv().UFO_Combat.Enabled = ENABLED 
+
     if ENABLED then
-        getgenv().UFO_Combat.Enabled = true
         redeemOnce()
         equipCombat()
         startHold()
         startDisableDialogue()
         phaseFarmWorld1()
     else
-        getgenv().UFO_Combat.Enabled = false
         stopHold()
         stopDisableDialogue()
         stopNoClip()
@@ -1081,7 +1085,14 @@ btn.MouseButton1Click:Connect(function()
     end
 end)
 
+-- รันสถานะเริ่มต้นตาม Save
 refresh()
+if ENABLED then
+    startHold()
+    startDisableDialogue()
+    phaseFarmWorld1()
+end
+
 end)
 -- ===== UFO HUB X • Home – Bomb Finder (Model A V1) =====
 
