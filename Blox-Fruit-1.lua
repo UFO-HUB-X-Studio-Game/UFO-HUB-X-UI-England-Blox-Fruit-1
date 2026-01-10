@@ -718,16 +718,12 @@ local SAVE = getgenv().UFOX_SAVE
 local SCOPE = ("AA1/FarmLevel/%d/%d/%s"):format(game.PlaceId, LP.UserId, LP.Name)
 
 local function SG(k,d)
-    local ok,v = pcall(function()
-        return SAVE.get(SCOPE.."/"..k,d)
-    end)
+    local ok,v = pcall(function() return SAVE.get(SCOPE.."/"..k,d) end)
     return ok and v or d
 end
 
 local function SS(k,v)
-    pcall(function()
-        SAVE.set(SCOPE.."/"..k,v)
-    end)
+    pcall(function() SAVE.set(SCOPE.."/"..k,v) end)
 end
 
 ------------------------------------------------------------------------
@@ -753,11 +749,7 @@ local function stroke(ui,t,col)
 end
 
 local function tween(o,p,d)
-    TweenService:Create(
-        o,
-        TweenInfo.new(d or 0.1, Enum.EasingStyle.Linear),
-        p
-    ):Play()
+    TweenService:Create(o, TweenInfo.new(d or 0.1, Enum.EasingStyle.Linear), p):Play()
 end
 
 ------------------------------------------------------------------------
@@ -820,9 +812,7 @@ local function startHold()
         if not ENABLED then return end
         local c = LP.Character
         local h = c and c:FindFirstChildOfClass("Humanoid")
-        if h and not h:FindFirstChildOfClass("Tool") then
-            equipCombat()
-        end
+        if h and not h:FindFirstChildOfClass("Tool") then equipCombat() end
     end)
 end
 
@@ -903,13 +893,13 @@ local function flyStraightTo(pos)
         local dir = (pos - hrp.Position)
         if dir.Magnitude < 3 then
             hrp.Velocity = Vector3.zero
-            local hum = c:FindFirstChildOfClass("Humanoid")
-            if hum then hum:ChangeState(Enum.HumanoidStateType.GettingUp) end
+            -- [[ มิ้นถึงตำแหน่งแล้ว: สั่งหยุดบินและหยุดทะลุทันที ]]
+            stopNoClip() 
             flyConn:Disconnect()
             return
         end
 
-        hrp.Velocity = dir.Unit * 120
+        hrp.Velocity = dir.Unit * 125
         hrp.CFrame = CFrame.new(hrp.Position, hrp.Position + dir)
     end)
 end
@@ -925,7 +915,6 @@ local function takeQuest()
 end
 
 local function phaseFarmWorld1()
-    -- ระบบจะทำงานเฉพาะเวล 1-9 เท่านั้น
     if getLevel() >= 1 and getLevel() <= 9 then
         startNoClip()
         flyStraightTo(QUEST_POS)
@@ -1077,15 +1066,13 @@ btn.MouseButton1Click:Connect(function()
     refresh()
 
     if ENABLED then
-        -- เปิดระบบทั้งหมด
-        getgenv().UFO_Combat.Enabled = true -- เปิด Aura ทันทีโดยไม่สนเลเวล
+        getgenv().UFO_Combat.Enabled = true
         redeemOnce()
         equipCombat()
         startHold()
         startDisableDialogue()
-        phaseFarmWorld1() -- ระบบวาร์ป/รับเควสจะเช็คเลเวลข้างในเอง
+        phaseFarmWorld1()
     else
-        -- ปิดระบบทั้งหมด
         getgenv().UFO_Combat.Enabled = false
         stopHold()
         stopDisableDialogue()
