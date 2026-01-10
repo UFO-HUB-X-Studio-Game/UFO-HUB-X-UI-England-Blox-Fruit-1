@@ -852,68 +852,74 @@ local function redeemOnce()
     SS("Redeemed",true)
 end
 
-------------------------------------------------------------------------
--- WORLD 1 • PHASE FARM (LEVEL 1–9)
-------------------------------------------------------------------------
+----------------------------------------------------------------
+-- SMART FLY + PHASE QUEST (WORLD 1)
+----------------------------------------------------------------
 local QUEST_POS = Vector3.new(1059.583,16.459,1547.783)
 
-local function startNoClip()
-    if noclipConn then noclipConn:Disconnect() end
-    noclipConn = RunService.Stepped:Connect(function()
-        if not ENABLED then return end
-        local c = LP.Character
-        if c then
-            for _,v in ipairs(c:GetDescendants()) do
-                if v:IsA("BasePart") then
-                    v.CanCollide = false
-                end
-            end
-        end
-    end)
+local function waitChar()
+    if LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
+        return LP.Character
+    end
+    return LP.CharacterAdded:Wait()
 end
 
-local function stopNoClip()
-    if noclipConn then noclipConn:Disconnect() noclipConn=nil end
-end
+local function startFlyTo(pos)
+    local char = waitChar()
+    local hrp = char:WaitForChild("HumanoidRootPart")
+    local hum = char:WaitForChild("Humanoid")
 
-local function flyStraightTo(pos)
-    if flyConn then flyConn:Disconnect() end
+    -- กัน Humanoid ดื้อ
+    hum:ChangeState(Enum.HumanoidStateType.Physics)
+
+    -- FORCE MOVE
+    local bv = Instance.new("BodyVelocity")
+    bv.MaxForce = Vector3.new(1e9,1e9,1e9)
+    bv.Velocity = Vector3.zero
+    bv.Parent = hrp
+
+    local align = Instance.new("AlignOrientation")
+    align.MaxTorque = 1e9
+    align.Responsiveness = 200
+    align.Parent = hrp
+
     flyConn = RunService.Heartbeat:Connect(function()
-        if not ENABLED then return end
-        local c = LP.Character
-        local hrp = c and c:FindFirstChild("HumanoidRootPart")
-        if not hrp then return end
-
-        local dir = (pos - hrp.Position)
-        if dir.Magnitude < 3 then
-            hrp.Velocity = Vector3.zero
+        if not ENABLED then
+            bv:Destroy()
+            align:Destroy()
             flyConn:Disconnect()
             return
         end
 
-        hrp.Velocity = dir.Unit * 120
-        hrp.CFrame = CFrame.new(hrp.Position, hrp.Position + dir)
-    end)
-end
+        local dir = (pos - hrp.Position)
+        local dist = dir.Magnitude
 
-local function takeQuest()
-    local args = {
-        "StartQuest",
-        "BanditQuest1",
-        1
-    }
-    ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer(unpack(args))
+        if dist <= 6 then
+            bv.Velocity = Vector3.zero
+            bv:Destroy()
+            align:Destroy()
+            flyConn:Disconnect()
+
+            -- รับเควสเมื่อ "ถึงจริง"
+            task.wait(0.2)
+            ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_")
+                :InvokeServer("StartQuest","BanditQuest1",1)
+            return
+        end
+
+        bv.Velocity = dir.Unit * 140
+        align.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + dir)
+    end)
 end
 
 local function phaseFarmWorld1()
-    if getLevel() < 1 or getLevel() > 9 then return end
-    startNoClip()
-    flyStraightTo(QUEST_POS)
-    task.delay(2.5,function()
-        takeQuest()
-    end)
-end
+    local lv = getLevel()
+    if lv < 1 or lv > 9 then return end
 
+    startNoClip()
+    startFlyTo(QUEST_POS)
+end
+               
 ------------------------------------------------------------------------
 -- ===================== SSS1 CORE (EXACT 100%) =====================
 ------------------------------------------------------------------------
