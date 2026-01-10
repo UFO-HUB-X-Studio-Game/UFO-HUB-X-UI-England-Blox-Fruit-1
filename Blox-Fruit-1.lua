@@ -853,9 +853,11 @@ local function redeemOnce()
 end
 
 ------------------------------------------------------------------------
--- WORLD 1 • PHASE FARM (LEVEL 1–9)
+-- WORLD 1 • PHASE FARM (LEVEL 1–9) • UFO FLY MODE
 ------------------------------------------------------------------------
 local QUEST_POS = Vector3.new(1059.583,16.459,1547.783)
+local FLY_HEIGHT = 45
+local FLY_SPEED = 120
 
 local function startNoClip()
     if noclipConn then noclipConn:Disconnect() end
@@ -876,7 +878,8 @@ local function stopNoClip()
     if noclipConn then noclipConn:Disconnect() noclipConn=nil end
 end
 
-local function flyStraightTo(pos)
+-- 🛸 PHASE 1 : ลอยขึ้นจากพื้น
+local function liftUp(targetY)
     if flyConn then flyConn:Disconnect() end
     flyConn = RunService.Heartbeat:Connect(function()
         if not ENABLED then return end
@@ -884,14 +887,36 @@ local function flyStraightTo(pos)
         local hrp = c and c:FindFirstChild("HumanoidRootPart")
         if not hrp then return end
 
-        local dir = (pos - hrp.Position)
-        if dir.Magnitude < 3 then
+        local diff = targetY - hrp.Position.Y
+        if math.abs(diff) < 2 then
             hrp.Velocity = Vector3.zero
             flyConn:Disconnect()
             return
         end
 
-        hrp.Velocity = dir.Unit * 120
+        hrp.Velocity = Vector3.new(0, diff > 0 and 80 or -80, 0)
+    end)
+end
+
+-- 🛸 PHASE 2 : บินแนวตรงแบบลอยฟ้า
+local function flyStraightHover(pos, height)
+    if flyConn then flyConn:Disconnect() end
+    flyConn = RunService.Heartbeat:Connect(function()
+        if not ENABLED then return end
+        local c = LP.Character
+        local hrp = c and c:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
+
+        local targetPos = Vector3.new(pos.X, height, pos.Z)
+        local dir = (targetPos - hrp.Position)
+
+        if dir.Magnitude < 4 then
+            hrp.Velocity = Vector3.zero
+            flyConn:Disconnect()
+            return
+        end
+
+        hrp.Velocity = dir.Unit * FLY_SPEED
         hrp.CFrame = CFrame.new(hrp.Position, hrp.Position + dir)
     end)
 end
@@ -902,14 +927,32 @@ local function takeQuest()
         "BanditQuest1",
         1
     }
-    ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer(unpack(args))
+    ReplicatedStorage
+        :WaitForChild("Remotes")
+        :WaitForChild("CommF_")
+        :InvokeServer(unpack(args))
 end
 
+-- 🚀 MAIN PHASE
 local function phaseFarmWorld1()
     if getLevel() < 1 or getLevel() > 9 then return end
+
     startNoClip()
-    flyStraightTo(QUEST_POS)
-    task.delay(2.5,function()
+
+    local char = LP.Character or LP.CharacterAdded:Wait()
+    local hrp = char:WaitForChild("HumanoidRootPart")
+    local hoverY = hrp.Position.Y + FLY_HEIGHT
+
+    -- Phase 1: ลอยขึ้น
+    liftUp(hoverY)
+
+    -- Phase 2: บินตรง
+    task.delay(1.2,function()
+        flyStraightHover(QUEST_POS, hoverY)
+    end)
+
+    -- รับเควส
+    task.delay(3.2,function()
         takeQuest()
     end)
 end
