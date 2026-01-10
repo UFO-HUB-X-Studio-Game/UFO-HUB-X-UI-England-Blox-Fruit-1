@@ -853,11 +853,29 @@ local function redeemOnce()
 end
 
 ------------------------------------------------------------------------
--- WORLD 1 • PHASE FARM (LEVEL 1–9) • UFO FLY MODE (LOW HOVER)
+-- WORLD 1 • PHASE FARM (LEVEL 1–9)
 ------------------------------------------------------------------------
 local QUEST_POS = Vector3.new(1059.583,16.459,1547.783)
-local FLY_HEIGHT = 9        -- ลอยนิดเดียวเหนือพื้น
-local FLY_SPEED  = 120
+
+-- [[ เพิ่มฟังก์ชันหยุดท่าเดินเพื่อความสวยงาม ]]
+local function stopAnims()
+    local char = LP.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        -- สั่งให้ตัวละครอยู่ในสถานะ Physics เพื่อหยุดท่าทางพื้นฐาน
+        hum:ChangeState(Enum.HumanoidStateType.Physics)
+        
+        local animator = hum:FindFirstChildOfClass("Animator")
+        if animator then
+            for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+                -- หยุดเฉพาะท่าเดิน วิ่ง หรือปีน
+                if track.Name:lower():find("walk") or track.Name:lower():find("run") or track.Name:lower():find("climb") then
+                    track:Stop()
+                end
+            end
+        end
+    end
+end
 
 local function startNoClip()
     if noclipConn then noclipConn:Disconnect() end
@@ -865,6 +883,9 @@ local function startNoClip()
         if not ENABLED then return end
         local c = LP.Character
         if c then
+            -- เรียกใช้การหยุดท่าทางทุกเฟรมขณะฟาร์ม
+            stopAnims()
+            
             for _,v in ipairs(c:GetDescendants()) do
                 if v:IsA("BasePart") then
                     v.CanCollide = false
@@ -876,171 +897,134 @@ end
 
 local function stopNoClip()
     if noclipConn then noclipConn:Disconnect() noclipConn=nil end
+    -- คืนค่าสถานะเพื่อให้ตัวละครกลับมาเดินได้ปกติเมื่อปิดฟาร์ม
+    local char = LP.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+    end
 end
 
--- 🛸 PHASE 1 : ลอยขึ้นเล็กน้อย
-local function liftUpSmooth(targetY)
+local function flyStraightTo(pos)
     if flyConn then flyConn:Disconnect() end
     flyConn = RunService.Heartbeat:Connect(function()
         if not ENABLED then return end
-        local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+        local c = LP.Character
+        local hrp = c and c:FindFirstChild("HumanoidRootPart")
         if not hrp then return end
 
-        local diff = targetY - hrp.Position.Y
-        if math.abs(diff) < 0.8 then
-            hrp.Velocity = Vector3.zero
-            flyConn:Disconnect()
-            return
-        end
-
-        hrp.Velocity = Vector3.new(0, diff * 6, 0) -- ลอยนุ่ม ๆ
-    end)
-end
-
--- 🛸 PHASE 2 : บินแนวตรง (ล็อก Y)
-local function flyStraightLockedY(pos, lockY)
-    if flyConn then flyConn:Disconnect() end
-    flyConn = RunService.Heartbeat:Connect(function()
-        if not ENABLED then return end
-        local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-        if not hrp then return end
-
-        local target = Vector3.new(pos.X, lockY, pos.Z)
-        local dir = target - hrp.Position
-
+        local dir = (pos - hrp.Position)
         if dir.Magnitude < 3 then
             hrp.Velocity = Vector3.zero
+            -- คืนค่าท่าทางเมื่อถึงที่หมาย
+            local hum = c:FindFirstChildOfClass("Humanoid")
+            if hum then hum:ChangeState(Enum.HumanoidStateType.GettingUp) end
             flyConn:Disconnect()
             return
         end
 
-        hrp.Velocity = dir.Unit * FLY_SPEED
+        hrp.Velocity = dir.Unit * 120
         hrp.CFrame = CFrame.new(hrp.Position, hrp.Position + dir)
     end)
 end
 
 local function takeQuest()
-    ReplicatedStorage
-        :WaitForChild("Remotes")
-        :WaitForChild("CommF_")
-        :InvokeServer("StartQuest","BanditQuest1",1)
+    local args = {
+        "StartQuest",
+        "BanditQuest1",
+        1
+    }
+    ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer(unpack(args))
 end
 
--- 🚀 MAIN FLOW
 local function phaseFarmWorld1()
     if getLevel() < 1 or getLevel() > 9 then return end
-
     startNoClip()
-
-    local char = LP.Character or LP.CharacterAdded:Wait()
-    local hrp = char:WaitForChild("HumanoidRootPart")
-    local hoverY = hrp.Position.Y + FLY_HEIGHT
-
-    -- Phase 1: ลอยขึ้นนิดเดียว
-    liftUpSmooth(hoverY)
-
-    -- Phase 1.5: ค้างระดับก่อน
-    task.delay(0.8, function()
-        if not ENABLED then return end
-        hrp.Velocity = Vector3.zero
-    end)
-
-    -- Phase 2: บินตรงแบบลอยตัว
-    task.delay(1.2, function()
-        flyStraightLockedY(QUEST_POS, hoverY)
-    end)
-
-    -- รับเควส
-    task.delay(3.0, function()
+    flyStraightTo(QUEST_POS)
+    task.delay(2.5,function()
         takeQuest()
     end)
 end
 
 ------------------------------------------------------------------------
-    -- ===================== SSS1 CORE (EXACT 100%) =====================
-    ------------------------------------------------------------------------
-    local LP = game:GetService("Players").LocalPlayer
-    local ReplicatedStorage = game:GetService("ReplicatedStorage")
-    local RunService = game:GetService("RunService")
-    local netRE = ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Net")
+-- ===================== SSS1 CORE (EXACT 100%) =====================
+------------------------------------------------------------------------
+getgenv().UFO_Data = {
+    CurrentKey = "6038e23a",
+    LastHrpName = "HumanoidRootPart"
+}
 
-    getgenv().UFO_Data = {
-        CurrentKey = "6038e23a",
-        LastHrpName = "HumanoidRootPart"
-    }
+getgenv().UFO_Combat = {
+    Enabled = false,
+    AuraRange = 1000,
+    AttackPerStep = 5,
+    BatchSize = 2
+}
 
-    getgenv().UFO_Combat = {
-        Enabled = false,
-        AuraRange = 1000,
-        AttackPerStep = 5,
-        BatchSize = 2
-    }
+-- Hook เพื่อดักจับรหัส RegisterHit
+local oldNamecall
+oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+    local args = {...}
+    local method = getnamecallmethod()
+    if tostring(self) == "RE/RegisterHit" and method == "FireServer" then
+        if args[4] then getgenv().UFO_Data.CurrentKey = args[4]
+        elseif args[3] then getgenv().UFO_Data.CurrentKey = args[3] end
+    end
+    return oldNamecall(self, ...)
+end)
 
-    local oldNamecall
-    oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-        local args = {...}
-        local method = getnamecallmethod()
-        if tostring(self) == "RE/RegisterHit" and method == "FireServer" then
-            if args[4] then getgenv().UFO_Data.CurrentKey = args[4]
-            elseif args[3] then getgenv().UFO_Data.CurrentKey = args[3] end
-        end
-        return oldNamecall(self, ...)
-    end)
+local targetIndex = 1
 
-    local targetIndex = 1
+RunService.Heartbeat:Connect(function()
+    if not getgenv().UFO_Combat.Enabled then return end
+    pcall(function()
+        local char = LP.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
 
-    RunService.Heartbeat:Connect(function()
-        if not getgenv().UFO_Combat.Enabled then return end
-        pcall(function()
-            local char = LP.Character
-            local hrp = char and char:FindFirstChild("HumanoidRootPart")
-            if not hrp then return end
-
-            local enemies = workspace:FindFirstChild("Enemies")
-            if enemies then
-                local allTargets = {}
-                for _, v in ipairs(enemies:GetChildren()) do
-                    local eHum = v:FindFirstChild("Humanoid")
-                    local eHrp = v:FindFirstChild("HumanoidRootPart")
-                    if eHum and eHum.Health > 0 and eHrp then
-                        if (eHrp.Position - hrp.Position).Magnitude <= getgenv().UFO_Combat.AuraRange then
-                            table.insert(allTargets, v)
-                        end
-                    end
-                end
-
-                if #allTargets > 0 then
-                    for i = 1, getgenv().UFO_Combat.AttackPerStep do
-                        targetIndex = (targetIndex % #allTargets) + 1
-                        local target = allTargets[targetIndex]
-                        local targetPart =
-                            target:FindFirstChild(getgenv().UFO_Data.LastHrpName)
-                            or target:FindFirstChild("HumanoidRootPart")
-
-                        task.spawn(function()
-                            netRE:WaitForChild("RE/RegisterAttack"):FireServer(0.5)
-                            for b = 1, getgenv().UFO_Combat.BatchSize do
-                                netRE:WaitForChild("RE/RegisterHit"):FireServer(unpack({
-                                    [1] = targetPart,
-                                    [2] = {},
-                                    [4] = getgenv().UFO_Data.CurrentKey
-                                }))
-                            end
-                        end)
+        local enemies = workspace:FindFirstChild("Enemies")
+        if enemies then
+            local allTargets = {}
+            for _, v in ipairs(enemies:GetChildren()) do
+                local eHum = v:FindFirstChild("Humanoid")
+                local eHrp = v:FindFirstChild("HumanoidRootPart")
+                if eHum and eHum.Health > 0 and eHrp then
+                    if (eHrp.Position - hrp.Position).Magnitude <= getgenv().UFO_Combat.AuraRange then
+                        table.insert(allTargets, v)
                     end
                 end
             end
-        end)
-    end)
 
-    RunService.Stepped:Connect(function()
-        if getgenv().UFO_Combat.Enabled and sethiddenproperty then
-            sethiddenproperty(LP, "SimulationRadius", 2000)
-            sethiddenproperty(LP, "MaxSimulationRadius", 2000)
+            if #allTargets > 0 then
+                for i = 1, getgenv().UFO_Combat.AttackPerStep do
+                    targetIndex = (targetIndex % #allTargets) + 1
+                    local target = allTargets[targetIndex]
+                    local targetPart =
+                        target:FindFirstChild(getgenv().UFO_Data.LastHrpName)
+                        or target:FindFirstChild("HumanoidRootPart")
+
+                    task.spawn(function()
+                        netRE:WaitForChild("RE/RegisterAttack"):FireServer(0.5)
+                        for b = 1, getgenv().UFO_Combat.BatchSize do
+                            netRE:WaitForChild("RE/RegisterHit"):FireServer(unpack({
+                                [1] = targetPart,
+                                [2] = {},
+                                [4] = getgenv().UFO_Data.CurrentKey
+                            }))
+                        end
+                    end)
+                end
+            end
         end
     end)
+end)
 
-    print("UFO HUB X V8: Stable Aura Active! (Range: 1000m / No Warp)")
+RunService.Stepped:Connect(function()
+    if getgenv().UFO_Combat.Enabled and sethiddenproperty then
+        sethiddenproperty(LP, "SimulationRadius", 2000)
+        sethiddenproperty(LP, "MaxSimulationRadius", 2000)
+    end
+end)
 
 ------------------------------------------------------------------------
 -- UI MODEL A V1
