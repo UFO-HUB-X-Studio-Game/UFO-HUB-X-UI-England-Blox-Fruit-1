@@ -770,6 +770,30 @@ local flyConn
 local noclipConn
 
 ------------------------------------------------------------------------
+-- WALK STATE CONTROL
+------------------------------------------------------------------------
+local savedWalkSpeed
+local savedAutoRotate
+
+local function disableWalk()
+    local char = LP.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+    savedWalkSpeed = hum.WalkSpeed
+    savedAutoRotate = hum.AutoRotate
+    hum.WalkSpeed = 0
+    hum.AutoRotate = false
+end
+
+local function restoreWalk()
+    local char = LP.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+    hum.WalkSpeed = savedWalkSpeed or 16
+    hum.AutoRotate = savedAutoRotate ~= false
+end
+
+------------------------------------------------------------------------
 -- DISABLE DIALOGUE
 ------------------------------------------------------------------------
 local function setDialogueVisible(state)
@@ -878,6 +902,7 @@ end
 
 local function flyStraightTo(pos)
     if flyConn then flyConn:Disconnect() end
+    disableWalk()
     flyConn = RunService.Heartbeat:Connect(function()
         if not ENABLED then return end
         local c = LP.Character
@@ -888,6 +913,7 @@ local function flyStraightTo(pos)
         if dir.Magnitude < 3 then
             hrp.Velocity = Vector3.zero
             flyConn:Disconnect()
+            restoreWalk()
             return
         end
 
@@ -897,31 +923,21 @@ local function flyStraightTo(pos)
 end
 
 local function takeQuest()
-    local args = {
-        "StartQuest",
-        "BanditQuest1",
-        1
-    }
-    ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer(unpack(args))
+    ReplicatedStorage.Remotes.CommF_:InvokeServer(
+        "StartQuest","BanditQuest1",1
+    )
 end
 
 local function phaseFarmWorld1()
     if getLevel() < 1 or getLevel() > 9 then return end
     startNoClip()
     flyStraightTo(QUEST_POS)
-    task.delay(2.5,function()
-        takeQuest()
-    end)
+    task.delay(2.5, takeQuest)
 end
 
 ------------------------------------------------------------------------
 -- ===================== SSS1 CORE (EXACT 100%) =====================
 ------------------------------------------------------------------------
-local LP = game:GetService("Players").LocalPlayer
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
-local netRE = ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Net")
-
 getgenv().UFO_Data = {
     CurrentKey = "6038e23a",
     LastHrpName = "HumanoidRootPart"
@@ -955,37 +971,34 @@ RunService.Heartbeat:Connect(function()
         if not hrp then return end
 
         local enemies = workspace:FindFirstChild("Enemies")
-        if enemies then
-            local allTargets = {}
-            for _, v in ipairs(enemies:GetChildren()) do
-                local eHum = v:FindFirstChild("Humanoid")
-                local eHrp = v:FindFirstChild("HumanoidRootPart")
-                if eHum and eHum.Health > 0 and eHrp then
-                    if (eHrp.Position - hrp.Position).Magnitude <= getgenv().UFO_Combat.AuraRange then
-                        table.insert(allTargets, v)
-                    end
+        if not enemies then return end
+
+        local targets = {}
+        for _,v in ipairs(enemies:GetChildren()) do
+            local h = v:FindFirstChild("Humanoid")
+            local p = v:FindFirstChild("HumanoidRootPart")
+            if h and h.Health > 0 and p then
+                if (p.Position - hrp.Position).Magnitude <= getgenv().UFO_Combat.AuraRange then
+                    table.insert(targets, v)
                 end
             end
+        end
 
-            if #allTargets > 0 then
-                for i = 1, getgenv().UFO_Combat.AttackPerStep do
-                    targetIndex = (targetIndex % #allTargets) + 1
-                    local target = allTargets[targetIndex]
-                    local targetPart =
-                        target:FindFirstChild(getgenv().UFO_Data.LastHrpName)
-                        or target:FindFirstChild("HumanoidRootPart")
+        if #targets == 0 then return end
 
-                    task.spawn(function()
-                        netRE:WaitForChild("RE/RegisterAttack"):FireServer(0.5)
-                        for b = 1, getgenv().UFO_Combat.BatchSize do
-                            netRE:WaitForChild("RE/RegisterHit"):FireServer(unpack({
-                                [1] = targetPart,
-                                [2] = {},
-                                [4] = getgenv().UFO_Data.CurrentKey
-                            }))
-                        end
-                    end)
-                end
+        for i=1,getgenv().UFO_Combat.AttackPerStep do
+            targetIndex = (targetIndex % #targets) + 1
+            local t = targets[targetIndex]
+            local tp = t:FindFirstChild(getgenv().UFO_Data.LastHrpName)
+                or t:FindFirstChild("HumanoidRootPart")
+
+            if tp then
+                task.spawn(function()
+                    netRE.RE.RegisterAttack:FireServer(0.5)
+                    for b=1,getgenv().UFO_Combat.BatchSize do
+                        netRE.RE.RegisterHit:FireServer(tp,{},nil,getgenv().UFO_Data.CurrentKey)
+                    end
+                end)
             end
         end
     end)
@@ -993,8 +1006,8 @@ end)
 
 RunService.Stepped:Connect(function()
     if getgenv().UFO_Combat.Enabled and sethiddenproperty then
-        sethiddenproperty(LP, "SimulationRadius", 2000)
-        sethiddenproperty(LP, "MaxSimulationRadius", 2000)
+        sethiddenproperty(LP,"SimulationRadius",2000)
+        sethiddenproperty(LP,"MaxSimulationRadius",2000)
     end
 end)
 
@@ -1048,7 +1061,8 @@ corner(knob,11)
 local function refresh()
     swStroke.Color = ENABLED and THEME.GREEN or THEME.RED
     tween(knob,{
-        Position = ENABLED and UDim2.new(1,-24,0.5,-11) or UDim2.new(0,2,0.5,-11)
+        Position = ENABLED and UDim2.new(1,-24,0.5,-11)
+            or UDim2.new(0,2,0.5,-11)
     })
 end
 
@@ -1073,6 +1087,7 @@ btn.MouseButton1Click:Connect(function()
         stopHold()
         stopDisableDialogue()
         stopNoClip()
+        restoreWalk()
         setDialogueVisible(true)
         getgenv().UFO_Combat.Enabled = false
     end
