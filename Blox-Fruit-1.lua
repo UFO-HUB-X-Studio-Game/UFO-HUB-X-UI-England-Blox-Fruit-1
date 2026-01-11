@@ -768,7 +768,7 @@ local farmLoopConn
 local effectRemoverConn
 
 ------------------------------------------------------------------------
--- EFFECT REMOVER (ต้นฉบับ 100%)
+-- EFFECT REMOVER & RESTORE (แก้ไขให้กลับมา 100%)
 ------------------------------------------------------------------------
 local function startEffectRemover()
     if effectRemoverConn then effectRemoverConn:Disconnect() end
@@ -777,16 +777,36 @@ local function startEffectRemover()
         local cam = workspace.CurrentCamera
         if cam then
             for _, v in ipairs(cam:GetChildren()) do
-                if v:IsA("PostEffect") or v.Name:find("Effect") then v:Destroy() end
+                if v:IsA("PostEffect") or v.Name:find("Effect") then v.Enabled = false end
             end
         end
         local char = LP.Character
         if char then
             for _, v in ipairs(char:GetDescendants()) do
-                if v:IsA("Light") or v:IsA("ParticleEmitter") then v.Enabled = false end
+                if v:IsA("Light") or v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("SelectionBox") then 
+                    v.Enabled = false 
+                end
             end
         end
     end)
+end
+
+local function restoreEffects()
+    if effectRemoverConn then effectRemoverConn:Disconnect() effectRemoverConn = nil end
+    local cam = workspace.CurrentCamera
+    if cam then
+        for _, v in ipairs(cam:GetChildren()) do
+            if v:IsA("PostEffect") or v.Name:find("Effect") then v.Enabled = true end
+        end
+    end
+    local char = LP.Character
+    if char then
+        for _, v in ipairs(char:GetDescendants()) do
+            if v:IsA("Light") or v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("SelectionBox") then 
+                v.Enabled = true 
+            end
+        end
+    end
 end
 
 ------------------------------------------------------------------------
@@ -950,7 +970,7 @@ local function bringAndModifyMobs(mobName, mobLockPos)
 end
 
 ------------------------------------------------------------------------
--- FARM LOOP (ต้นฉบับ 100%)
+-- FARM LOOP (แก้ไขระบบวาร์ปเซฟ)
 ------------------------------------------------------------------------
 local function startFarmLoop()
     if farmLoopConn then farmLoopConn:Disconnect() end
@@ -963,7 +983,6 @@ local function startFarmLoop()
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
         if not hrp or not hum then return end
 
-        -- กันจมน้ำ (ต้นฉบับ 100%)
         local water = workspace:FindFirstChild("Map") and workspace.Map:FindFirstChild("WaterBase-Plane")
         if water and hrp.Position.Y < (water.Position.Y + 20) then
             hrp.Velocity = Vector3.new(0, 60, 0)
@@ -1010,20 +1029,23 @@ local function startFarmLoop()
             local SPAWN_POS = Vector3.new(-1334.883, 11.886, 496.108)
             local Q_POS = Vector3.new(-1602.307, 36.887, 152.540)
             
-            -- [จุดที่แก้ไข: วาร์ปไปเซฟเฉพาะตอนที่ยังไม่ได้เซฟใน Session นี้เท่านั้น]
+            -- บังคับวาร์ปไปเซฟ (เพิ่มระบบรอและหน่วงเวลา)
             if not hasSetSpawnThisSession then
                 startNoClip()
                 hrp.Velocity = Vector3.zero
                 hrp.CFrame = CFrame.new(SPAWN_POS) -- วาร์ปทันที
-                task.wait(0.2)
-                game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("SetSpawnPoint")
-                hasSetSpawnThisSession = true
-                task.wait(0.1)
-                hum.Health = 0 -- รีเซ็ตตัว
+                
+                -- รอจนกว่าพิกัดจะตรง (เพื่อกันการฆ่าตัวตายกลางอากาศ)
+                if (hrp.Position - SPAWN_POS).Magnitude < 10 then
+                    task.wait(0.5) -- รอโหลด
+                    game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("SetSpawnPoint")
+                    hasSetSpawnThisSession = true
+                    task.wait(1.5) -- หน่วงเวลาให้เซฟติดชัวร์ๆ ก่อนตาย
+                    hum.Health = 0 
+                end
                 return
             end
 
-            -- แยกมอน Monkey/Gorilla (ต้นฉบับ 100%)
             local m_name, f_pos, l_pos, q_num
             if level <= 14 then
                 m_name = "Monkey"
@@ -1216,7 +1238,7 @@ btn.MouseButton1Click:Connect(function()
         stopHold()
         stopDisableDialogue()
         stopFarmLoop()
-        if effectRemoverConn then effectRemoverConn:Disconnect() effectRemoverConn = nil end
+        restoreEffects() -- คืนค่า 100%
         setDialogueVisible(true)
     end
 end)
