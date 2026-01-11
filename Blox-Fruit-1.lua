@@ -990,13 +990,12 @@ local function bringAndModifyMobs(mobName, mobLockPos)
     end
 end
 
-------------------------------------------------------------------------
--- FARM LOOP
-------------------------------------------------------------------------
+------------------------------------------------------------
+-- FARM LOOP (ส่วนที่แก้ไขเพิ่มเกาะที่ 3)
+------------------------------------------------------------
 local function startFarmLoop()
     if farmLoopConn then farmLoopConn:Disconnect() end
     
-    -- บังคับล้างภารกิจเก่าทิ้งทันทีที่เริ่ม Loop (เมื่อเปิดสวิตช์)
     forceAbandonQuest()
 
     farmLoopConn = RunService.Heartbeat:Connect(function()
@@ -1012,6 +1011,7 @@ local function startFarmLoop()
             return 
         end
 
+        -- ป้องกันตกน้ำ
         local water = workspace:FindFirstChild("Map") and workspace.Map:FindFirstChild("WaterBase-Plane")
         if water and hrp.Position.Y < (water.Position.Y + 20) then
             hrp.Velocity = Vector3.new(0, 60, 0)
@@ -1063,21 +1063,15 @@ local function startFarmLoop()
             if not hasSetSpawnThisSession then
                 if not isResettingForSpawn then
                     isResettingForSpawn = true 
-                    
                     stopNoClip()
                     task.wait(0.1)
-                    
                     hrp.CFrame = CFrame.new(SPAWN_POS) 
                     hrp.Velocity = Vector3.zero 
-                    
                     task.wait(0.5) 
-                    
                     for i = 1, 5 do
                         game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("SetSpawnPoint")
                         task.wait(0.1) 
                     end
-                    
-                    -- [แก้ไข] กลับมาใช้ 2.0 วินาทีตามต้องการ
                     task.wait(2.0) 
                     hasSetSpawnThisSession = true
                     hum.Health = 0 
@@ -1122,14 +1116,64 @@ local function startFarmLoop()
                     bringAndModifyMobs(m_name, l_pos)
                 end
             end
+
+        ------------------------------------------------------------
+        -- เกาะ 3: Pirate Village (เลเวล 30-39)
+        ------------------------------------------------------------
+        elseif level >= 30 and level <= 39 then
+            local SPAWN_POS = Vector3.new(-1188.286, 4.796, 3815.343)
+            local Q_POS = Vector3.new(-1140.191, 4.797, 3828.526)
+            local F_POS = Vector3.new(-1223.608, 34.973, 3906.843) -- ตำแหน่งฟาร์ม (บนตัวมอน)
+            local L_POS = Vector3.new(-1223.593, 4.797, 3906.796)  -- ตำแหน่งดึงมอนมา
+            
+            -- ระบบเช็คจุดเซฟประจำเกาะ 3
+            if not hasSetSpawnThisSession then
+                if not isResettingForSpawn then
+                    isResettingForSpawn = true 
+                    stopNoClip()
+                    task.wait(0.1)
+                    hrp.CFrame = CFrame.new(SPAWN_POS) 
+                    hrp.Velocity = Vector3.zero 
+                    task.wait(0.5) 
+                    for i = 1, 5 do
+                        game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("SetSpawnPoint")
+                        task.wait(0.1) 
+                    end
+                    task.wait(2.0) 
+                    hasSetSpawnThisSession = true
+                    hum.Health = 0 
+                end
+                return 
+            end
+
+            if not hasQuest() then
+                startNoClip()
+                local distQ = (Q_POS - hrp.Position).Magnitude
+                if distQ > 5 then
+                    hrp.Velocity = (Q_POS - hrp.Position).Unit * 150
+                    hrp.CFrame = CFrame.new(hrp.Position, Q_POS)
+                else
+                    hrp.Velocity = Vector3.zero
+                    stopNoClip()
+                    game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("StartQuest", "BuggyQuest1", 1)
+                end
+            else
+                startNoClip()
+                local distF = (F_POS - hrp.Position).Magnitude
+                if distF > 5 then
+                    hrp.Velocity = (F_POS - hrp.Position).Unit * 150
+                    hrp.CFrame = CFrame.new(hrp.Position, F_POS)
+                else
+                    hrp.Velocity = Vector3.zero
+                    hrp.AssemblyLinearVelocity = Vector3.zero 
+                    hrp.CFrame = CFrame.new(F_POS) 
+                    bringAndModifyMobs("Pirate", L_POS)
+                end
+            end
         end
     end)
 end
 
-local function stopFarmLoop()
-    if farmLoopConn then farmLoopConn:Disconnect() farmLoopConn = nil end
-    stopNoClip()
-end
 
 ------------------------------------------------------------------------
 -- SSS1 CORE
