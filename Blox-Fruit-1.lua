@@ -705,6 +705,11 @@ local LP = Players.LocalPlayer
 local netRE = ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Net")
 
 ------------------------------------------------------------------------
+-- SESSION CHECK (ระบบเช็คการปิดเปิดสวิตช์)
+------------------------------------------------------------------------
+local hasSetSpawnThisSession = false 
+
+------------------------------------------------------------------------
 -- LEVEL CHECK
 ------------------------------------------------------------------------
 local function getLevel()
@@ -760,10 +765,10 @@ local holdConn
 local dialogueConn
 local noclipConn
 local farmLoopConn 
-local effectRemoverConn -- ระบบลบแสง
+local effectRemoverConn
 
 ------------------------------------------------------------------------
--- EFFECT REMOVER (ลบแสงจ้า)
+-- EFFECT REMOVER (ต้นฉบับ 100%)
 ------------------------------------------------------------------------
 local function startEffectRemover()
     if effectRemoverConn then effectRemoverConn:Disconnect() end
@@ -785,7 +790,7 @@ local function startEffectRemover()
 end
 
 ------------------------------------------------------------------------
--- DISABLE DIALOGUE
+-- DISABLE DIALOGUE (ต้นฉบับ 100%)
 ------------------------------------------------------------------------
 local function setDialogueVisible(state)
     local pg = LP:FindFirstChild("PlayerGui")
@@ -808,7 +813,7 @@ local function stopDisableDialogue()
 end
 
 ------------------------------------------------------------------------
--- COMBAT PRIORITY
+-- COMBAT PRIORITY (ต้นฉบับ 100%)
 ------------------------------------------------------------------------
 local COMBAT_STYLES = {
     "Sanguine Art","Godhuman","Dragon Talon","Electric Claw",
@@ -844,7 +849,7 @@ local function stopHold()
 end
 
 ------------------------------------------------------------------------
--- REDEEM ONCE
+-- REDEEM ONCE (ต้นฉบับ 100%)
 ------------------------------------------------------------------------
 local CODES = {
     "LIGHTNINGABUSE","KITT_RESET","SUB2OFFICIALNOOBIE","BIGNEWS","BLUXXY",
@@ -866,7 +871,7 @@ local function redeemOnce()
 end
 
 ------------------------------------------------------------------------
--- QUEST HELPERS & NOCLIP
+-- QUEST HELPERS & NOCLIP (ต้นฉบับ 100%)
 ------------------------------------------------------------------------
 local function hasQuest()
     local pg = LP:FindFirstChild("PlayerGui")
@@ -914,7 +919,7 @@ local function stopNoClip()
 end
 
 ------------------------------------------------------------------------
--- BRING & MODIFY MONSTER (โครงสร้างตามที่คุณส่งมา)
+-- BRING & MODIFY MONSTER (ต้นฉบับ 100%)
 ------------------------------------------------------------------------
 local function bringAndModifyMobs(mobName, mobLockPos)
     if sethiddenproperty then
@@ -935,7 +940,6 @@ local function bringAndModifyMobs(mobName, mobLockPos)
                 y.Humanoid.WalkSpeed = 0
                 y.Humanoid.JumpPower = 0
                 
-                -- ซ้ำเพื่อความมั่นใจตามโค้ดต้นฉบับ
                 yhrp.CFrame = yhrp.CFrame
                 yhrp.CanCollide = false
                 y.Humanoid.WalkSpeed = 0
@@ -946,7 +950,7 @@ local function bringAndModifyMobs(mobName, mobLockPos)
 end
 
 ------------------------------------------------------------------------
--- FARM LOOP (1-29) ครบระบบ Fly + SetSpawn
+-- FARM LOOP (ต้นฉบับ 100% + การแยกเกาะเพื่อให้เพิ่มเองได้ง่าย)
 ------------------------------------------------------------------------
 local function startFarmLoop()
     if farmLoopConn then farmLoopConn:Disconnect() end
@@ -955,20 +959,23 @@ local function startFarmLoop()
         if not ENABLED then return end
         local level = getLevel()
         local char = LP.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
-        if not hrp then return end
+        if not hrp or not hum then return end
 
-        -- กันจมน้ำ (WaterBase-Plane)
+        -- กันจมน้ำ (ต้นฉบับ 100%)
         local water = workspace:FindFirstChild("Map") and workspace.Map:FindFirstChild("WaterBase-Plane")
         if water and hrp.Position.Y < (water.Position.Y + 20) then
             hrp.Velocity = Vector3.new(0, 60, 0)
             return
         end
 
+        ------------------------------------------------------------
+        -- [[ ส่วนที่คุณสามารถเพิ่มเกาะใหม่ได้เอง ]]
+        ------------------------------------------------------------
+        
+        -- เกาะ 1: Bandit (เลเวล 1-9)
         if level >= 1 and level <= 9 then
-            ------------------------------------------------------------
-            -- เกาะที่ 1: Bandit
-            ------------------------------------------------------------
             local Q_POS = Vector3.new(1059.583, 16.459, 1547.783)
             local F_POS = Vector3.new(1196.068, 42.290, 1613.823)
             local L_POS = Vector3.new(1195.924, 16.739, 1613.705)
@@ -998,15 +1005,13 @@ local function startFarmLoop()
                 end
             end
 
+        -- เกาะ 2: Jungle (เลเวล 10-29)
         elseif level >= 10 and level <= 29 then
-            ------------------------------------------------------------
-            -- เกาะที่ 2: Jungle (Fly & SaveSpawn & Farm)
-            ------------------------------------------------------------
             local SPAWN_POS = Vector3.new(-1334.883, 11.886, 496.108)
             local Q_POS = Vector3.new(-1602.307, 36.887, 152.540)
             
-            -- บินไปเซฟจุดเกิดเกาะ Jungle (บังคับให้พาไปเซฟ)
-            if not SG("SpawnSet_Jungle", false) then
+            -- บังคับวาร์ปไปเซฟและฆ่าตัวตาย 1 ครั้งต่อการเปิดปิดสวิตช์
+            if not hasSetSpawnThisSession then
                 startNoClip()
                 local distS = (SPAWN_POS - hrp.Position).Magnitude
                 if distS > 5 then
@@ -1015,12 +1020,14 @@ local function startFarmLoop()
                 else
                     hrp.Velocity = Vector3.zero
                     game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("SetSpawnPoint")
-                    SS("SpawnSet_Jungle", true)
+                    hasSetSpawnThisSession = true -- ล็อคว่าทำแล้ว
+                    task.wait(0.1)
+                    hum.Health = 0 -- ฆ่าตัวตาย
                 end
                 return
             end
 
-            -- แยกมอน Monkey (10-14) หรือ Gorilla (15-29)
+            -- แยกมอน Monkey/Gorilla (ต้นฉบับ 100%)
             local m_name, f_pos, l_pos, q_num
             if level <= 14 then
                 m_name = "Monkey"
@@ -1029,8 +1036,8 @@ local function startFarmLoop()
                 q_num = 1
             else
                 m_name = "Gorilla"
-                f_pos = Vector3.new(-1213.795, 34.323, -501.571) -- ฟาร์มลอยฟ้า
-                l_pos = Vector3.new(-1212.747, 6.308, -501.325) -- จุดล็อคมอน
+                f_pos = Vector3.new(-1213.795, 34.323, -501.571)
+                l_pos = Vector3.new(-1212.747, 6.308, -501.325)
                 q_num = 2
             end
 
@@ -1058,6 +1065,9 @@ local function startFarmLoop()
                     bringAndModifyMobs(m_name, l_pos)
                 end
             end
+
+        -- [[ คุณสามารถเพิ่ม elseif level >= ... ต่อลงมาตรงนี้ได้เลย ]]
+
         end
     end)
 end
@@ -1068,7 +1078,7 @@ local function stopFarmLoop()
 end
 
 ------------------------------------------------------------------------
--- ===================== SSS1 CORE (AURA) =====================
+-- SSS1 CORE (ต้นฉบับ 100%)
 ------------------------------------------------------------------------
 getgenv().UFO_Data = {
     CurrentKey = "6038e23a",
@@ -1145,7 +1155,7 @@ RunService.Stepped:Connect(function()
 end)
 
 ------------------------------------------------------------------------
--- UI GENERATION
+-- UI GENERATION (ต้นฉบับ 100%)
 ------------------------------------------------------------------------
 local layout = scroll:FindFirstChildOfClass("UIListLayout") or Instance.new("UIListLayout",scroll)
 layout.Padding = UDim.new(0,12)
@@ -1209,6 +1219,9 @@ btn.MouseButton1Click:Connect(function()
         startFarmLoop()
         startEffectRemover()
     else
+        -- รีเซ็ตสถานะการเซฟ เมื่อปิดสวิตช์
+        hasSetSpawnThisSession = false 
+        
         stopHold()
         stopDisableDialogue()
         stopFarmLoop()
