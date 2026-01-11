@@ -701,6 +701,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
+local Lighting = game:GetService("Lighting")
 local LP = Players.LocalPlayer
 local netRE = ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Net")
 
@@ -732,6 +733,8 @@ local function SS(k,v)
     pcall(function() SAVE.set(SCOPE.."/"..k,v) end)
 end
 
+local ENABLED = SG("Enabled", false)
+
 ------------------------------------------------------------------------
 -- THEME & UI UTILS
 ------------------------------------------------------------------------
@@ -759,49 +762,55 @@ local function tween(o,p,d)
 end
 
 ------------------------------------------------------------------------
--- EFFECT REMOVER & UI CLEANER (แก้ไขพิเศษลบหน้าจอขาวเลเวลอัป)
+-- EFFECT REMOVER & UI CLEANER (แก้ไขพิเศษลบหน้าจอขาวและเอฟเฟค 100%)
 ------------------------------------------------------------------------
+local function cleanEffect(v)
+    if not ENABLED then return end
+    if v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Light") or v:IsA("SelectionBox") or v:IsA("PostEffect") or v:IsA("Bloom") or v:IsA("SunRays") then
+        v.Enabled = false
+    end
+    if (v:IsA("Frame") or v:IsA("ImageLabel")) and (v.Name:lower():find("flash") or v.Name:lower():find("white") or v.Name:lower():find("effect")) then
+        v.Visible = false
+    end
+end
+
+local childConn -- เก็บตัวแปรดักจับ
+
 local function startEffectRemover()
     if effectRemoverConn then effectRemoverConn:Disconnect() end
+    if childConn then childConn:Disconnect() end
+
+    -- บังคับปิดแสงพื้นฐานให้มืดลงเพื่อกันแสงจ้าจากระเบิดเลเวล
+    Lighting.Brightness = 0
+    Lighting.GlobalShadows = false
+
+    -- ล้างเอฟเฟคที่มีอยู่แล้ว
+    for _, v in ipairs(game:GetDescendants()) do
+        cleanEffect(v)
+    end
+
+    -- ดักจับเอฟเฟคที่เกิดใหม่ (เช่น แสงเลเวลอัป)
+    childConn = game.DescendantAdded:Connect(function(v)
+        cleanEffect(v)
+    end)
+
     effectRemoverConn = RunService.Heartbeat:Connect(function()
         if not ENABLED then return end
         
-        -- 1. ลบ PostProcessing ใน Camera (แสงจ้า/Blur)
+        -- จัดการ UI และเอฟเฟคกล้องทุกเฟรม
         local cam = workspace.CurrentCamera
         if cam then
             for _, v in ipairs(cam:GetChildren()) do
-                if v:IsA("PostEffect") or v:IsA("Bloom") or v:IsA("SunRays") or v:IsA("ColorCorrectionEffect") then 
-                    v.Enabled = false 
-                end
+                if v:IsA("PostEffect") then v.Enabled = false end
             end
         end
 
-        -- 2. ลบเอฟเฟคเลเวลอัปที่ตัวละคร (Particle/Light)
-        local char = LP.Character
-        if char then
-            for _, v in ipairs(char:GetDescendants()) do
-                if v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Light") or v:IsA("SelectionBox") then 
-                    v.Enabled = false 
-                end
-            end
-        end
-
-        -- 3. ลบ UI หน้าจอขาวและแจ้งเตือน (ลบต้นเหตุในคลิป)
         local pg = LP:FindFirstChild("PlayerGui")
         if pg then
-            -- ปิดหน้าจอขาวแจ้งเลเวลอัป
             local main = pg:FindFirstChild("Main")
             if main then
-                -- ปิด Notification ทั้งหมด
                 if main:FindFirstChild("Notifications") then main.Notifications.Visible = false end
-                -- ปิดเอฟเฟคแสงขาวที่มักอยู่ใน UI
-                for _, v in ipairs(main:GetDescendants()) do
-                    if (v:IsA("Frame") or v:IsA("ImageLabel")) and (v.Name:find("White") or v.Name:find("Flash") or v.Name:find("Light")) then
-                        v.Visible = false
-                    end
-                end
             end
-            
             -- ปิด UI เลเวลอัปที่เด้งแยกออกมา
             for _, gui in ipairs(pg:GetChildren()) do
                 if gui:IsA("ScreenGui") and (gui.Name:find("Level") or gui.Name:find("Notice")) then
@@ -809,17 +818,18 @@ local function startEffectRemover()
                 end
             end
         end
-        
-        -- 4. บังคับปิด Lighting พื้นฐาน (ลดความจ้า)
-        game:GetService("Lighting").Brightness = 1
-        game:GetService("Lighting").GlobalShadows = false
     end)
 end
 
 local function restoreEffects()
     if effectRemoverConn then effectRemoverConn:Disconnect() effectRemoverConn = nil end
+    if childConn then childConn:Disconnect() childConn = nil end
     
-    -- คืนค่า UI แจ้งเตือน
+    -- คืนค่า Lighting
+    Lighting.Brightness = 2
+    Lighting.GlobalShadows = true
+
+    -- เปิดเอฟเฟคและ UI คืน
     local pg = LP:FindFirstChild("PlayerGui")
     if pg then
         local main = pg:FindFirstChild("Main")
@@ -832,10 +842,6 @@ local function restoreEffects()
             end
         end
     end
-    
-    -- คืนค่า Lighting
-    game:GetService("Lighting").Brightness = 2
-    game:GetService("Lighting").GlobalShadows = true
 end
 
 ------------------------------------------------------------------------
