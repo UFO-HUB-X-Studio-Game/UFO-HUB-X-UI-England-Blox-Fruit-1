@@ -759,28 +759,22 @@ local function tween(o,p,d)
 end
 
 ------------------------------------------------------------------------
--- STATE & CONNECTIONS
-------------------------------------------------------------------------
-local ENABLED = SG("Enabled", false)
-local holdConn
-local dialogueConn
-local noclipConn
-local farmLoopConn 
-local effectRemoverConn
-
-------------------------------------------------------------------------
--- EFFECT REMOVER & RESTORE
+-- EFFECT REMOVER & UI CLEANER (แก้ไขเพื่อลบเอฟเฟคในคลิป)
 ------------------------------------------------------------------------
 local function startEffectRemover()
     if effectRemoverConn then effectRemoverConn:Disconnect() end
     effectRemoverConn = RunService.Heartbeat:Connect(function()
         if not ENABLED then return end
+        
+        -- 1. ลบเอฟเฟคในกล้อง (Post Processing)
         local cam = workspace.CurrentCamera
         if cam then
             for _, v in ipairs(cam:GetChildren()) do
                 if v:IsA("PostEffect") or v.Name:find("Effect") then v.Enabled = false end
             end
         end
+
+        -- 2. ลบเอฟเฟคที่เกิดกับตัวละคร (แสงเลเวลอัป)
         local char = LP.Character
         if char then
             for _, v in ipairs(char:GetDescendants()) do
@@ -789,23 +783,42 @@ local function startEffectRemover()
                 end
             end
         end
+
+        -- 3. ลบ UI แจ้งเตือนกลางจอ (เลเวลอัป/เงิน)
+        local pg = LP:FindFirstChild("PlayerGui")
+        if pg then
+            local main = pg:FindFirstChild("Main")
+            if main then
+                -- ปิด Notification และเอฟเฟคเด้งๆ กลางจอ
+                local notif = main:FindFirstChild("Notifications")
+                if notif then notif.Visible = false end
+                
+                local levelMsg = main:FindFirstChild("LevelUpMsg") -- บางเวอร์ชันใช้ชื่อนี้
+                if levelMsg then levelMsg.Visible = false end
+            end
+        end
+        
+        -- 4. จัดการเอฟเฟคใน Folder พิเศษ (กันมันเกิดใหม่)
+        for _, v in ipairs(ReplicatedStorage:GetChildren()) do
+            if v.Name:find("Effect") and v:IsA("Folder") then
+                for _, ef in ipairs(v:GetDescendants()) do
+                    if ef:IsA("ParticleEmitter") or ef:IsA("Trail") then ef.Enabled = false end
+                end
+            end
+        end
     end)
 end
 
 local function restoreEffects()
     if effectRemoverConn then effectRemoverConn:Disconnect() effectRemoverConn = nil end
-    local cam = workspace.CurrentCamera
-    if cam then
-        for _, v in ipairs(cam:GetChildren()) do
-            if v:IsA("PostEffect") or v.Name:find("Effect") then v.Enabled = true end
-        end
-    end
-    local char = LP.Character
-    if char then
-        for _, v in ipairs(char:GetDescendants()) do
-            if v:IsA("Light") or v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("SelectionBox") then 
-                v.Enabled = true 
-            end
+    
+    -- คืนค่า UI
+    local pg = LP:FindFirstChild("PlayerGui")
+    if pg then
+        local main = pg:FindFirstChild("Main")
+        if main then
+            local notif = main:FindFirstChild("Notifications")
+            if notif then notif.Visible = true end
         end
     end
 end
@@ -966,7 +979,7 @@ local function bringAndModifyMobs(mobName, mobLockPos)
 end
 
 ------------------------------------------------------------------------
--- FARM LOOP (แก้ไขระบบวาร์ปเซฟ - วาร์ปเท่านั้น)
+-- FARM LOOP
 ------------------------------------------------------------------------
 local function startFarmLoop()
     if farmLoopConn then farmLoopConn:Disconnect() end
@@ -1030,21 +1043,19 @@ local function startFarmLoop()
             local SPAWN_POS = Vector3.new(-1334.883, 11.886, 496.108)
             local Q_POS = Vector3.new(-1602.307, 36.887, 152.540)
             
-            -- บังคับวาร์ปไปเซฟ 100%
             if not hasSetSpawnThisSession then
                 if not isResettingForSpawn then
                     startNoClip()
-                    -- วาร์ปทันที (Direct Warp)
                     hrp.CFrame = CFrame.new(SPAWN_POS) 
-                    hrp.Velocity = Vector3.zero -- หยุดแรงส่ง
+                    hrp.Velocity = Vector3.zero 
                     
-                    task.wait(0.3) -- รอชิ้นส่วนตัวละครเข้าที่
+                    task.wait(0.3) 
                     game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("SetSpawnPoint")
                     
-                    task.wait(0.7) -- รอ Server รับค่า
+                    task.wait(0.7) 
                     isResettingForSpawn = true 
                     hasSetSpawnThisSession = true
-                    hum.Health = 0 -- ฆ่าตัวตายทันที
+                    hum.Health = 0 
                 end
                 return 
             end
