@@ -965,34 +965,8 @@ local function stopNoClip()
 end
 
 ------------------------------------------------------------------------
--- BRING & MODIFY MONSTER
+-- FARM LOOP (ฉบับบินไปเซฟ + ลอยตัวสูง)
 ------------------------------------------------------------------------
-local function bringAndModifyMobs(mobName, mobLockPos)
-    if sethiddenproperty then
-        sethiddenproperty(game.Players.LocalPlayer, "SimulationRadius", math.huge)
-    end
-
-    local enemies = workspace:FindFirstChild("Enemies")
-    if not enemies then return end
-
-    for _, y in ipairs(enemies:GetChildren()) do
-        if y.Name == mobName and y:FindFirstChild("Humanoid") and y.Humanoid.Health > 0 then
-            local yhrp = y:FindFirstChild("HumanoidRootPart")
-            if yhrp then
-                yhrp.CFrame = CFrame.new(mobLockPos)
-                yhrp.Size = Vector3.new(60, 60, 60)
-                yhrp.Transparency = 1
-                yhrp.CanCollide = false
-                y.Humanoid.WalkSpeed = 0
-                y.Humanoid.JumpPower = 0
-            end
-        end
-    end
-end
-
-------------------------------------------------------------
--- FARM LOOP (ส่วนที่แก้ไขเพิ่มเกาะที่ 3)
-------------------------------------------------------------
 local function startFarmLoop()
     if farmLoopConn then farmLoopConn:Disconnect() end
     
@@ -1004,12 +978,7 @@ local function startFarmLoop()
         local char = LP.Character
         local hum = char and char:FindFirstChildOfClass("Humanoid")
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
-        if not hrp or not hum then return end
-
-        if hum.Health <= 0 then 
-            isResettingForSpawn = false 
-            return 
-        end
+        if not hrp or not hum or hum.Health <= 0 then return end
 
         -- ป้องกันตกน้ำ
         local water = workspace:FindFirstChild("Map") and workspace.Map:FindFirstChild("WaterBase-Plane")
@@ -1057,24 +1026,23 @@ local function startFarmLoop()
         -- เกาะ 2: Jungle (เลเวล 10-29)
         ------------------------------------------------------------
         elseif level >= 10 and level <= 29 then
-            local SPAWN_POS = Vector3.new(-1334.883, 11.886, 496.108)
+            local SPAWN_FLY_POS = Vector3.new(-1334.883, 35.0, 496.108) -- บินลอยเหนือจุดเซฟ
             local Q_POS = Vector3.new(-1602.307, 36.887, 152.540)
             
+            -- บินไปเซฟจุดเกิด (ทำครั้งเดียวต่อเลเวลช่วงนี้)
             if not hasSetSpawnThisSession then
-                if not isResettingForSpawn then
-                    isResettingForSpawn = true 
-                    stopNoClip()
-                    task.wait(0.1)
-                    hrp.CFrame = CFrame.new(SPAWN_POS) 
-                    hrp.Velocity = Vector3.zero 
-                    task.wait(0.5) 
+                startNoClip()
+                local distS = (SPAWN_FLY_POS - hrp.Position).Magnitude
+                if distS > 5 then
+                    hrp.Velocity = (SPAWN_FLY_POS - hrp.Position).Unit * 150
+                    hrp.CFrame = CFrame.new(hrp.Position, SPAWN_FLY_POS)
+                else
+                    hrp.Velocity = Vector3.zero
                     for i = 1, 5 do
                         game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("SetSpawnPoint")
-                        task.wait(0.1) 
+                        task.wait(0.1)
                     end
-                    task.wait(2.0) 
-                    hasSetSpawnThisSession = true
-                    hum.Health = 0 
+                    hasSetSpawnThisSession = true -- เซฟเสร็จแล้วไปทำอย่างอื่นต่อ ไม่ต้อง Reset ตัว
                 end
                 return 
             end
@@ -1121,27 +1089,28 @@ local function startFarmLoop()
         -- เกาะ 3: Pirate Village (เลเวล 30-39)
         ------------------------------------------------------------
         elseif level >= 30 and level <= 39 then
-            local SPAWN_POS = Vector3.new(-1188.286, 4.796, 3815.343)
+            -- ปรับความสูงจุดเซฟตามที่ให้มา (Y = 32.851)
+            local SPAWN_FLY_POS = Vector3.new(-1188.286, 32.851, 3815.343) 
             local Q_POS = Vector3.new(-1140.191, 4.797, 3828.526)
-            local F_POS = Vector3.new(-1223.608, 34.973, 3906.843) -- ตำแหน่งฟาร์ม (บนตัวมอน)
-            local L_POS = Vector3.new(-1223.593, 4.797, 3906.796)  -- ตำแหน่งดึงมอนมา
+            local F_POS = Vector3.new(-1223.608, 34.973, 3906.843)
+            local L_POS = Vector3.new(-1223.593, 4.797, 3906.796)
             
-            -- ระบบเช็คจุดเซฟประจำเกาะ 3
+            -- บินไปเซฟจุดเกิดแบบลอยตัว (ทำครั้งเดียวเมื่อเข้าเกาะ 3)
             if not hasSetSpawnThisSession then
-                if not isResettingForSpawn then
-                    isResettingForSpawn = true 
-                    stopNoClip()
-                    task.wait(0.1)
-                    hrp.CFrame = CFrame.new(SPAWN_POS) 
-                    hrp.Velocity = Vector3.zero 
-                    task.wait(0.5) 
+                -- ถ้าข้ามมาจากเกาะ 2 ให้รีเซ็ตค่าเช็คเพื่อให้เซฟของเกาะ 3 ใหม่
+                -- (ปกติจะเช็คด้วยเลเวลอยู่แล้ว แต่ใส่กันพลาด)
+                startNoClip()
+                local distS = (SPAWN_FLY_POS - hrp.Position).Magnitude
+                if distS > 5 then
+                    hrp.Velocity = (SPAWN_FLY_POS - hrp.Position).Unit * 150
+                    hrp.CFrame = CFrame.new(hrp.Position, SPAWN_FLY_POS)
+                else
+                    hrp.Velocity = Vector3.zero
                     for i = 1, 5 do
                         game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("SetSpawnPoint")
-                        task.wait(0.1) 
+                        task.wait(0.1)
                     end
-                    task.wait(2.0) 
                     hasSetSpawnThisSession = true
-                    hum.Health = 0 
                 end
                 return 
             end
@@ -1173,6 +1142,7 @@ local function startFarmLoop()
         end
     end)
 end
+
 
 
 ------------------------------------------------------------------------
