@@ -762,62 +762,45 @@ local function tween(o,p,d)
 end
 
 ------------------------------------------------------------------------
--- EFFECT REMOVER & UI CLEANER (ปิดหน้าจอขาว/เอฟเฟคเลเวลอัป 100%)
+-- [NEW] EFFECT REMOVER SYSTEM (แทรกเข้าไปใหม่)
 ------------------------------------------------------------------------
+local effectRemoverConn
+local effectAddedConn
+
 local function cleanObj(v)
     if not ENABLED then return end
-    -- ปิดเอฟเฟคแสง/อนุภาค
     if v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Light") or v:IsA("SelectionBox") or v:IsA("PostEffect") or v:IsA("Bloom") or v:IsA("BlurEffect") then
         v.Enabled = false
     end
-    -- ปิด UI ที่ทำให้เกิดแสงจ้า/หน้าจอขาว
     if (v:IsA("Frame") or v:IsA("ImageLabel")) and (v.Name:lower():find("flash") or v.Name:lower():find("white") or v.Name:lower():find("light")) then
         v.Visible = false
     end
 end
 
-local effectConn -- ตัวดักจับวัตถุเกิดใหม่
-
 local function startEffectRemover()
     if effectRemoverConn then effectRemoverConn:Disconnect() end
-    if effectConn then effectConn:Disconnect() end
+    if effectAddedConn then effectAddedConn:Disconnect() end
 
-    -- บังคับปิดแสงสว่างของโลก (กันแสงจ้าจากระเบิดเลเวล)
     Lighting.Brightness = 0
     Lighting.GlobalShadows = false
 
-    -- 1. ล้างของเก่าที่มีอยู่แล้วในเกม
-    for _, v in ipairs(game:GetDescendants()) do
-        cleanObj(v)
-    end
+    for _, v in ipairs(game:GetDescendants()) do cleanObj(v) end
+    effectAddedConn = game.DescendantAdded:Connect(cleanObj)
 
-    -- 2. ดักจับของใหม่ที่กำลังจะเกิด (เลเวลอัปชอบสร้างมาใหม่)
-    effectConn = game.DescendantAdded:Connect(function(v)
-        cleanObj(v)
-    end)
-
-    -- 3. ตรวจสอบ UI และ Camera ทุกเฟรม
     effectRemoverConn = RunService.Heartbeat:Connect(function()
         if not ENABLED then return end
-        
         local cam = workspace.CurrentCamera
         if cam then
             for _, v in ipairs(cam:GetChildren()) do
                 if v:IsA("PostEffect") then v.Enabled = false end
             end
         end
-
         local pg = LP:FindFirstChild("PlayerGui")
         if pg then
-            -- ปิด Notification และ UI แจ้งเตือนเลเวล
             local main = pg:FindFirstChild("Main")
-            if main and main:FindFirstChild("Notifications") then
-                main.Notifications.Visible = false
-            end
+            if main and main:FindFirstChild("Notifications") then main.Notifications.Visible = false end
             for _, gui in ipairs(pg:GetChildren()) do
-                if gui:IsA("ScreenGui") and (gui.Name:find("Level") or gui.Name:find("Notice")) then
-                    gui.Enabled = false
-                end
+                if gui:IsA("ScreenGui") and (gui.Name:find("Level") or gui.Name:find("Notice")) then gui.Enabled = false end
             end
         end
     end)
@@ -825,22 +808,13 @@ end
 
 local function restoreEffects()
     if effectRemoverConn then effectRemoverConn:Disconnect() effectRemoverConn = nil end
-    if effectConn then effectConn:Disconnect() effectConn = nil end
-    
+    if effectAddedConn then effectAddedConn:Disconnect() effectAddedConn = nil end
     Lighting.Brightness = 2
     Lighting.GlobalShadows = true
-
     local pg = LP:FindFirstChild("PlayerGui")
     if pg then
         local main = pg:FindFirstChild("Main")
-        if main and main:FindFirstChild("Notifications") then
-            main.Notifications.Visible = true
-        end
-        for _, gui in ipairs(pg:GetChildren()) do
-            if gui:IsA("ScreenGui") and (gui.Name:find("Level") or gui.Name:find("Notice")) then
-                gui.Enabled = true
-            end
-        end
+        if main and main:FindFirstChild("Notifications") then main.Notifications.Visible = true end
     end
 end
 
@@ -1000,7 +974,7 @@ local function bringAndModifyMobs(mobName, mobLockPos)
 end
 
 ------------------------------------------------------------------------
--- FARM LOOP
+-- FARM LOOP (Logic เดิม 100%)
 ------------------------------------------------------------------------
 local function startFarmLoop()
     if farmLoopConn then farmLoopConn:Disconnect() end
@@ -1120,7 +1094,7 @@ local function stopFarmLoop()
 end
 
 ------------------------------------------------------------------------
--- SSS1 CORE (Combat)
+-- SSS1 CORE (Combat เดิม 100%)
 ------------------------------------------------------------------------
 getgenv().UFO_Data = {
     CurrentKey = "6038e23a",
@@ -1197,7 +1171,7 @@ RunService.Stepped:Connect(function()
 end)
 
 ------------------------------------------------------------------------
--- UI GENERATION
+-- UI GENERATION (เดิม 100%)
 ------------------------------------------------------------------------
 local layout = scroll:FindFirstChildOfClass("UIListLayout") or Instance.new("UIListLayout",scroll)
 layout.Padding = UDim.new(0,12)
@@ -1259,14 +1233,14 @@ btn.MouseButton1Click:Connect(function()
         startHold()
         startDisableDialogue()
         startFarmLoop()
-        startEffectRemover()
+        startEffectRemover() -- เรียกใช้ระบบลบเอฟเฟค
     else
         hasSetSpawnThisSession = false 
         isResettingForSpawn = false 
         stopHold()
         stopDisableDialogue()
         stopFarmLoop()
-        restoreEffects() 
+        restoreEffects() -- คืนค่าเอฟเฟค
         setDialogueVisible(true)
     end
 end)
