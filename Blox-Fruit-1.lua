@@ -902,7 +902,6 @@ local function hasQuest()
     return false
 end
 
--- ใหม่: ยกเลิกภารกิจปัจจุบันทันที (ใช้ตอนเปิดสวิตช์ครั้งแรก หรือเลเวลเกิน)
 local function forceAbandonQuest()
     pcall(function()
         game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("AbandonQuest")
@@ -916,7 +915,7 @@ local function checkAndAbandonQuest(currentLevel)
     
     if questGui and questGui.Visible then
         local questName = questGui.Container.QuestTitle.Title.Text
-        if currentLevel >= 10 and questName:find("Bandit") then
+        if currentLevel >= 10 and (questName:find("Bandit") or questName:find("โจร")) then
             forceAbandonQuest()
         end
     end
@@ -955,6 +954,11 @@ end
 local function stopNoClip()
     if noclipConn then noclipConn:Disconnect() noclipConn=nil end
     local char = LP.Character
+    if char then
+        for _,v in ipairs(char:GetDescendants()) do
+            if v:IsA("BasePart") then v.CanCollide = true end
+        end
+    end
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     if hum then hum:ChangeState(Enum.HumanoidStateType.GettingUp) end
 end
@@ -1055,14 +1059,23 @@ local function startFarmLoop()
             if not hasSetSpawnThisSession then
                 if not isResettingForSpawn then
                     isResettingForSpawn = true 
-                    startNoClip()
+                    
+                    -- ปิด NoClip ก่อนวาร์ปไปเซฟ
+                    stopNoClip()
+                    task.wait(0.1)
+                    
                     hrp.CFrame = CFrame.new(SPAWN_POS) 
                     hrp.Velocity = Vector3.zero 
                     
-                    task.wait(0.5)
-                    game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("SetSpawnPoint")
+                    task.wait(0.5) 
                     
-                    task.wait(3.0) -- [ปรับปรุง] เพิ่มเป็น 3 วินาทีตามที่ขอ เพื่อให้เซฟติดแน่นอน 100%
+                    -- [แก้ไขใหม่] วนลูปกดเซฟจุดเกิด 5 ครั้ง
+                    for i = 1, 5 do
+                        game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("SetSpawnPoint")
+                        task.wait(0.2) -- เว้นช่วงเล็กน้อยระหว่างการกดแต่ละครั้ง
+                    end
+                    
+                    task.wait(3.0) -- รอก่อนฆ่าตัวตาย 3 วินาทีตามที่ขอ
                     hasSetSpawnThisSession = true
                     hum.Health = 0 
                 end
@@ -1250,9 +1263,7 @@ btn.MouseButton1Click:Connect(function()
     getgenv().UFO_Combat.Enabled = ENABLED 
 
     if ENABLED then
-        -- [ปรับปรุง] ทุกครั้งที่เปิดสวิตช์ใหม่ ให้ยกเลิกเควสเก่าทิ้งเพื่อเริ่มใหม่ตามเลเวล
         forceAbandonQuest() 
-        
         redeemOnce()
         equipCombat()
         startHold()
