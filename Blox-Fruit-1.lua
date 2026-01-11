@@ -691,7 +691,6 @@ end)
 
 registerRight("Home", function(scroll) end)
 registerRight("Settings", function(scroll) end)
---===== UFO HUB X • Home • Farm Level 🌾 (Model A V1 + AA1 + SSS1 + Phase Farm World 1) =====
 registerRight("Home", function(scroll)
 
 ------------------------------------------------------------------------
@@ -759,7 +758,7 @@ local ENABLED = SG("Enabled", false)
 local holdConn
 local dialogueConn
 local noclipConn
-local farmLoopConn -- ตัวแปรสำหรับ Loop ฟาร์ม
+local farmLoopConn 
 
 ------------------------------------------------------------------------
 -- DISABLE DIALOGUE
@@ -843,29 +842,27 @@ local function redeemOnce()
 end
 
 ------------------------------------------------------------------------
--- MOVEMENT & QUEST LOGIC
+-- MOVEMENT, QUEST & BRING MOB LOGIC
 ------------------------------------------------------------------------
+-- ตำแหน่ง NPC รับเควส
 local QUEST_POS = Vector3.new(1059.583,16.459,1547.783)
+-- ตำแหน่งที่ผู้เล่นจะยืนฟาร์ม (เหนือหัวมอน)
+local FARM_POS  = Vector3.new(1196.068, 42.290, 1613.823)
+-- ตำแหน่งที่จะดึงมอนมารวมกัน
+local MOB_LOCK_POS = Vector3.new(1195.924, 16.739, 1613.705)
 
--- ฟังก์ชันเช็คว่ามีเควสอยู่หรือไม่ (ตามที่ขอ)
 local function hasQuest()
     local pg = LP:FindFirstChild("PlayerGui")
     local main = pg and pg:FindFirstChild("Main")
     local questGui = main and main:FindFirstChild("Quest")
-    -- ถ้า Visible = true แปลว่ามีเควส
-    -- ถ้า Visible = false หรือหาไม่เจอ แปลว่าไม่มีเควส
-    if questGui and questGui.Visible then
-        return true
-    end
+    if questGui and questGui.Visible then return true end
     return false
 end
 
--- หยุดอนิเมชั่นเดิน/วิ่ง เพื่อให้ตัวนิ่งตอนบิน
 local function stopAnims()
     local char = LP.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     if hum then
-        -- ใช้ Physics state เพื่อให้ตัวลอยนิ่ง ไม่ขยับขา
         hum:ChangeState(Enum.HumanoidStateType.Physics)
         local animator = hum:FindFirstChildOfClass("Animator")
         if animator then
@@ -878,14 +875,12 @@ local function stopAnims()
     end
 end
 
--- เปิดโหมดทะลุ
 local function startNoClip()
     if noclipConn then noclipConn:Disconnect() end
     noclipConn = RunService.Stepped:Connect(function()
         if not ENABLED then return end
         local c = LP.Character
         if c then
-            -- สั่งหยุดอนิเมชั่นตลอดเวลาที่ Noclip ทำงาน
             stopAnims()
             for _,v in ipairs(c:GetDescendants()) do
                 if v:IsA("BasePart") then v.CanCollide = false end
@@ -894,55 +889,91 @@ local function startNoClip()
     end)
 end
 
--- ปิดโหมดทะลุ (คืนค่าให้ยืนบนพื้นได้)
 local function stopNoClip()
     if noclipConn then noclipConn:Disconnect() noclipConn=nil end
     local char = LP.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
-    if hum then 
-        hum:ChangeState(Enum.HumanoidStateType.GettingUp) 
-    end
+    if hum then hum:ChangeState(Enum.HumanoidStateType.GettingUp) end
 end
 
--- ฟังก์ชันรับเควส
 local function takeQuest()
     local args = {"StartQuest", "BanditQuest1", 1}
     ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer(unpack(args))
 end
 
--- ลูปหลักของการฟาร์ม (เช็คเควส -> บิน -> รับ -> ตี)
+-- [[ ระบบดึงมอนสเตอร์ & ปรับแต่ง ]]
+local function bringAndModifyMobs()
+    -- ปรับ SimulationRadius ให้กว้างที่สุด เพื่อให้คุมมอนได้
+    if sethiddenproperty then
+        sethiddenproperty(LP, "SimulationRadius", math.huge)
+    end
+
+    local enemies = workspace:FindFirstChild("Enemies")
+    if not enemies then return end
+
+    for _, v in ipairs(enemies:GetChildren()) do
+        if v.Name == "Bandit" and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
+            local hrp = v:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                -- 1. ดึงมาตำแหน่งที่กำหนด
+                hrp.CFrame = CFrame.new(MOB_LOCK_POS)
+                
+                -- 2. ปรับแต่งสภาพ (ตามที่ขอ)
+                hrp.Size = Vector3.new(60, 60, 60)
+                hrp.Transparency = 1
+                hrp.CanCollide = false
+                
+                v.Humanoid.WalkSpeed = 0
+                v.Humanoid.JumpPower = 0
+                
+                -- ป้องกันหัวชนกันแล้วเด้ง
+                if v:FindFirstChild("Head") then v.Head.CanCollide = false end
+            end
+        end
+    end
+end
+
+-- [[ Loop หลักของการทำงาน ]]
 local function startFarmLoop()
     if farmLoopConn then farmLoopConn:Disconnect() end
     
     farmLoopConn = RunService.Heartbeat:Connect(function()
         if not ENABLED then return end
-        if getLevel() > 9 then return end -- ทำงานเฉพาะเลเวล 1-9
+        if getLevel() > 9 then return end -- เลิกทำเมื่อเวลเกิน 9
         
         local char = LP.Character
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
         if not hrp then return end
 
         if not hasQuest() then
-            -- [[ กรณีไม่มีเควส (Visible = False) ]]
-            -- ให้บินไปรับเควส
-            startNoClip() -- เปิดทะลุ + หยุดขา
-            
+            -- [ ไม่มีเควส: ไปรับเควส ]
+            startNoClip()
             local dist = (QUEST_POS - hrp.Position).Magnitude
             if dist > 3 then
-                -- ยังไม่ถึง: บินไปหา
                 hrp.Velocity = (QUEST_POS - hrp.Position).Unit * 125
                 hrp.CFrame = CFrame.new(hrp.Position, QUEST_POS)
             else
-                -- ถึงแล้ว: หยุดบิน หยุดทะลุ และรับเควส
                 hrp.Velocity = Vector3.zero
-                stopNoClip()
+                stopNoClip() -- ถึงแล้วหยุดทะลุ
                 takeQuest()
             end
         else
-            -- [[ กรณีมีเควสแล้ว (Visible = True) ]]
-            -- ให้หยุดระบบบิน และหยุดทะลุ เพื่อให้ Aura ทำงานตีมอนสเตอร์ปกติ
-            stopNoClip()
-            -- ตรงนี้ตัวละครจะยืนบนพื้นปกติ พร้อมตีมอนด้วย SSS1 Aura
+            -- [ มีเควสแล้ว: ไปจุดฟาร์ม & ดึงมอน ]
+            startNoClip() -- เปิดทะลุเพื่อบินไปจุดฟาร์ม
+            local dist = (FARM_POS - hrp.Position).Magnitude
+            
+            if dist > 3 then
+                -- กำลังบินไปจุดฟาร์ม
+                hrp.Velocity = (FARM_POS - hrp.Position).Unit * 125
+                hrp.CFrame = CFrame.new(hrp.Position, FARM_POS)
+            else
+                -- ถึงจุดฟาร์มแล้ว: ล็อคตัวไว้ที่เดิม และ ดึงมอน
+                hrp.Velocity = Vector3.zero
+                hrp.CFrame = CFrame.new(FARM_POS) -- ล็อคตำแหน่งผู้เล่น
+                
+                -- สั่งดึงมอนสเตอร์
+                bringAndModifyMobs()
+            end
         end
     end)
 end
@@ -1100,16 +1131,15 @@ btn.MouseButton1Click:Connect(function()
         equipCombat()
         startHold()
         startDisableDialogue()
-        startFarmLoop() -- เริ่มระบบเช็คเควสและบิน
+        startFarmLoop()
     else
         stopHold()
         stopDisableDialogue()
-        stopFarmLoop() -- หยุดทุกอย่าง
+        stopFarmLoop()
         setDialogueVisible(true)
     end
 end)
 
--- รันค่าเริ่มต้น
 refresh()
 if ENABLED then
     startHold()
