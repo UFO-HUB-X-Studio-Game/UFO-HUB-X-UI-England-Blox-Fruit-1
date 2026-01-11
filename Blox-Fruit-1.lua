@@ -915,8 +915,9 @@ local function checkAndAbandonQuest(currentLevel)
     
     if questGui and questGui.Visible then
         local questName = questGui.Container.QuestTitle.Title.Text
-        -- ล้างเควสเกาะแรกถ้าเลเวลถึงเกาะสอง
         if currentLevel >= 10 and (questName:find("Bandit") or questName:find("โจร")) then
+            forceAbandonQuest()
+        elseif currentLevel >= 30 and (questName:find("Jungle") or questName:find("ป่า")) then
             forceAbandonQuest()
         end
     end
@@ -965,12 +966,39 @@ local function stopNoClip()
 end
 
 ------------------------------------------------------------------------
--- FARM LOOP (ฉบับบินไปเซฟ + ลอยตัวสูง)
+-- BRING & MODIFY MONSTER
+------------------------------------------------------------------------
+local function bringAndModifyMobs(mobName, mobLockPos)
+    if sethiddenproperty then
+        sethiddenproperty(game.Players.LocalPlayer, "SimulationRadius", math.huge)
+    end
+
+    local enemies = workspace:FindFirstChild("Enemies")
+    if not enemies then return end
+
+    for _, y in ipairs(enemies:GetChildren()) do
+        if y.Name == mobName and y:FindFirstChild("Humanoid") and y.Humanoid.Health > 0 then
+            local yhrp = y:FindFirstChild("HumanoidRootPart")
+            if yhrp then
+                yhrp.CFrame = CFrame.new(mobLockPos)
+                yhrp.Size = Vector3.new(60, 60, 60)
+                yhrp.Transparency = 1
+                yhrp.CanCollide = false
+                y.Humanoid.WalkSpeed = 0
+                y.Humanoid.JumpPower = 0
+            end
+        end
+    end
+end
+
+------------------------------------------------------------------------
+-- FARM LOOP (100% ตามต้นฉบับ + เพิ่มเกาะ Pirate + บินไปเซฟ)
 ------------------------------------------------------------------------
 local function startFarmLoop()
     if farmLoopConn then farmLoopConn:Disconnect() end
     
     forceAbandonQuest()
+    hasSetSpawnThisSession = false -- บังคับให้บินไปเซฟใหม่ตอนเปิด
 
     farmLoopConn = RunService.Heartbeat:Connect(function()
         if not ENABLED then return end
@@ -978,9 +1006,13 @@ local function startFarmLoop()
         local char = LP.Character
         local hum = char and char:FindFirstChildOfClass("Humanoid")
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
-        if not hrp or not hum or hum.Health <= 0 then return end
+        if not hrp or not hum then return end
 
-        -- ป้องกันตกน้ำ
+        if hum.Health <= 0 then 
+            isResettingForSpawn = false 
+            return 
+        end
+
         local water = workspace:FindFirstChild("Map") and workspace.Map:FindFirstChild("WaterBase-Plane")
         if water and hrp.Position.Y < (water.Position.Y + 20) then
             hrp.Velocity = Vector3.new(0, 60, 0)
@@ -1026,10 +1058,9 @@ local function startFarmLoop()
         -- เกาะ 2: Jungle (เลเวล 10-29)
         ------------------------------------------------------------
         elseif level >= 10 and level <= 29 then
-            local SPAWN_FLY_POS = Vector3.new(-1334.883, 35.0, 496.108) -- บินลอยเหนือจุดเซฟ
+            local SPAWN_FLY_POS = Vector3.new(-1334.883, 32.851, 496.108) -- บินลอยเซฟ
             local Q_POS = Vector3.new(-1602.307, 36.887, 152.540)
             
-            -- บินไปเซฟจุดเกิด (ทำครั้งเดียวต่อเลเวลช่วงนี้)
             if not hasSetSpawnThisSession then
                 startNoClip()
                 local distS = (SPAWN_FLY_POS - hrp.Position).Magnitude
@@ -1042,7 +1073,7 @@ local function startFarmLoop()
                         game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("SetSpawnPoint")
                         task.wait(0.1)
                     end
-                    hasSetSpawnThisSession = true -- เซฟเสร็จแล้วไปทำอย่างอื่นต่อ ไม่ต้อง Reset ตัว
+                    hasSetSpawnThisSession = true
                 end
                 return 
             end
@@ -1089,16 +1120,12 @@ local function startFarmLoop()
         -- เกาะ 3: Pirate Village (เลเวล 30-39)
         ------------------------------------------------------------
         elseif level >= 30 and level <= 39 then
-            -- ปรับความสูงจุดเซฟตามที่ให้มา (Y = 32.851)
-            local SPAWN_FLY_POS = Vector3.new(-1188.286, 32.851, 3815.343) 
+            local SPAWN_FLY_POS = Vector3.new(-905.156, 32.851, 3888.309) -- บินลอยจุดเซฟตามสั่ง
             local Q_POS = Vector3.new(-1140.191, 4.797, 3828.526)
             local F_POS = Vector3.new(-1223.608, 34.973, 3906.843)
             local L_POS = Vector3.new(-1223.593, 4.797, 3906.796)
             
-            -- บินไปเซฟจุดเกิดแบบลอยตัว (ทำครั้งเดียวเมื่อเข้าเกาะ 3)
             if not hasSetSpawnThisSession then
-                -- ถ้าข้ามมาจากเกาะ 2 ให้รีเซ็ตค่าเช็คเพื่อให้เซฟของเกาะ 3 ใหม่
-                -- (ปกติจะเช็คด้วยเลเวลอยู่แล้ว แต่ใส่กันพลาด)
                 startNoClip()
                 local distS = (SPAWN_FLY_POS - hrp.Position).Magnitude
                 if distS > 5 then
@@ -1141,6 +1168,11 @@ local function startFarmLoop()
             end
         end
     end)
+end
+
+local function stopFarmLoop()
+    if farmLoopConn then farmLoopConn:Disconnect() farmLoopConn = nil end
+    stopNoClip()
 end
 
 ------------------------------------------------------------------------
@@ -1278,7 +1310,6 @@ btn.MouseButton1Click:Connect(function()
     getgenv().UFO_Combat.Enabled = ENABLED 
 
     if ENABLED then
-        -- เรียกใช้ Loop เลย ซึ่งข้างในมี forceAbandonQuest() อยู่แล้ว
         startHold()
         startDisableDialogue()
         startFarmLoop()
