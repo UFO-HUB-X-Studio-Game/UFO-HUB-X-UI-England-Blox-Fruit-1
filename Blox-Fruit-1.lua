@@ -902,6 +902,21 @@ local function hasQuest()
     return false
 end
 
+-- ใหม่: ยกเลิกเควสเก่าเมื่อเลเวลถึงกำหนด
+local function checkAndAbandonQuest(currentLevel)
+    local pg = LP:FindFirstChild("PlayerGui")
+    local main = pg and pg:FindFirstChild("Main")
+    local questGui = main and main:FindFirstChild("Quest")
+    
+    if questGui and questGui.Visible then
+        local questName = questGui.Container.QuestTitle.Title.Text
+        -- ถ้าเลเวล 10+ แต่ยังถือเควส Bandit (เลเวล 1) ให้ยกเลิก
+        if currentLevel >= 10 and questName:find("Bandit") then
+            game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("AbandonQuest")
+        end
+    end
+end
+
 local function stopAnims()
     local char = LP.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -966,7 +981,7 @@ local function bringAndModifyMobs(mobName, mobLockPos)
 end
 
 ------------------------------------------------------------------------
--- FARM LOOP (แก้ไขระบบวาร์ปเซฟ - วาร์ปเท่านั้น)
+-- FARM LOOP
 ------------------------------------------------------------------------
 local function startFarmLoop()
     if farmLoopConn then farmLoopConn:Disconnect() end
@@ -989,6 +1004,9 @@ local function startFarmLoop()
             hrp.Velocity = Vector3.new(0, 60, 0)
             return
         end
+
+        -- ตรวจสอบและยกเลิกภารกิจที่เลเวลไม่ตรง
+        checkAndAbandonQuest(level)
 
         ------------------------------------------------------------
         -- เกาะ 1: Bandit (เลเวล 1-9)
@@ -1030,21 +1048,19 @@ local function startFarmLoop()
             local SPAWN_POS = Vector3.new(-1334.883, 11.886, 496.108)
             local Q_POS = Vector3.new(-1602.307, 36.887, 152.540)
             
-            -- บังคับวาร์ปไปเซฟ 100%
             if not hasSetSpawnThisSession then
                 if not isResettingForSpawn then
+                    isResettingForSpawn = true -- ล็อกสถานะทันทีกัน Loop ซ้อน
                     startNoClip()
-                    -- วาร์ปทันที (Direct Warp)
                     hrp.CFrame = CFrame.new(SPAWN_POS) 
-                    hrp.Velocity = Vector3.zero -- หยุดแรงส่ง
+                    hrp.Velocity = Vector3.zero 
                     
-                    task.wait(0.3) -- รอชิ้นส่วนตัวละครเข้าที่
+                    task.wait(0.5) -- รอให้ตัวละครนิ่ง
                     game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("SetSpawnPoint")
                     
-                    task.wait(0.7) -- รอ Server รับค่า
-                    isResettingForSpawn = true 
+                    task.wait(2.0) -- [แก้ไข] เพิ่มเวลารอให้ระบบเซฟทันก่อนฆ่าตัวตาย
                     hasSetSpawnThisSession = true
-                    hum.Health = 0 -- ฆ่าตัวตายทันที
+                    hum.Health = 0 
                 end
                 return 
             end
