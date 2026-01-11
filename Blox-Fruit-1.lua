@@ -846,7 +846,7 @@ end
 ------------------------------------------------------------------------
 -- ตำแหน่ง NPC รับเควส
 local QUEST_POS = Vector3.new(1059.583,16.459,1547.783)
--- ตำแหน่งที่ผู้เล่นจะยืนฟาร์ม (เหนือหัวมอน)
+-- ตำแหน่งที่ผู้เล่นจะยืนฟาร์ม (เหนือหัวมอน) **จุดที่จะให้ลอยค้าง**
 local FARM_POS  = Vector3.new(1196.068, 42.290, 1613.823)
 -- ตำแหน่งที่จะดึงมอนมารวมกัน
 local MOB_LOCK_POS = Vector3.new(1195.924, 16.739, 1613.705)
@@ -903,7 +903,6 @@ end
 
 -- [[ ระบบดึงมอนสเตอร์ & ปรับแต่ง ]]
 local function bringAndModifyMobs()
-    -- ปรับ SimulationRadius ให้กว้างที่สุด เพื่อให้คุมมอนได้
     if sethiddenproperty then
         sethiddenproperty(LP, "SimulationRadius", math.huge)
     end
@@ -918,7 +917,7 @@ local function bringAndModifyMobs()
                 -- 1. ดึงมาตำแหน่งที่กำหนด
                 hrp.CFrame = CFrame.new(MOB_LOCK_POS)
                 
-                -- 2. ปรับแต่งสภาพ (ตามที่ขอ)
+                -- 2. ปรับแต่งสภาพ
                 hrp.Size = Vector3.new(60, 60, 60)
                 hrp.Transparency = 1
                 hrp.CanCollide = false
@@ -926,7 +925,6 @@ local function bringAndModifyMobs()
                 v.Humanoid.WalkSpeed = 0
                 v.Humanoid.JumpPower = 0
                 
-                -- ป้องกันหัวชนกันแล้วเด้ง
                 if v:FindFirstChild("Head") then v.Head.CanCollide = false end
             end
         end
@@ -939,14 +937,14 @@ local function startFarmLoop()
     
     farmLoopConn = RunService.Heartbeat:Connect(function()
         if not ENABLED then return end
-        if getLevel() > 9 then return end -- เลิกทำเมื่อเวลเกิน 9
+        if getLevel() > 9 then return end 
         
         local char = LP.Character
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
         if not hrp then return end
 
         if not hasQuest() then
-            -- [ ไม่มีเควส: ไปรับเควส ]
+            -- [ ไม่มีเควส: บินไปรับเควส ]
             startNoClip()
             local dist = (QUEST_POS - hrp.Position).Magnitude
             if dist > 3 then
@@ -954,22 +952,24 @@ local function startFarmLoop()
                 hrp.CFrame = CFrame.new(hrp.Position, QUEST_POS)
             else
                 hrp.Velocity = Vector3.zero
-                stopNoClip() -- ถึงแล้วหยุดทะลุ
+                stopNoClip() 
                 takeQuest()
             end
         else
-            -- [ มีเควสแล้ว: ไปจุดฟาร์ม & ดึงมอน ]
-            startNoClip() -- เปิดทะลุเพื่อบินไปจุดฟาร์ม
+            -- [ มีเควสแล้ว: ไปจุดฟาร์ม & ล็อคตัว ]
+            startNoClip()
             local dist = (FARM_POS - hrp.Position).Magnitude
             
             if dist > 3 then
-                -- กำลังบินไปจุดฟาร์ม
+                -- กำลังบินไป
                 hrp.Velocity = (FARM_POS - hrp.Position).Unit * 125
                 hrp.CFrame = CFrame.new(hrp.Position, FARM_POS)
             else
-                -- ถึงจุดฟาร์มแล้ว: ล็อคตัวไว้ที่เดิม และ ดึงมอน
+                -- [[ ถึงแล้ว: ล็อคตัวผู้เล่น (Floating Lock) ]]
+                -- สั่งให้ตำแหน่งเท่ากับจุด FARM_POS ตลอดเวลา (Freeze)
                 hrp.Velocity = Vector3.zero
-                hrp.CFrame = CFrame.new(FARM_POS) -- ล็อคตำแหน่งผู้เล่น
+                hrp.AssemblyLinearVelocity = Vector3.zero 
+                hrp.CFrame = CFrame.new(FARM_POS) 
                 
                 -- สั่งดึงมอนสเตอร์
                 bringAndModifyMobs()
