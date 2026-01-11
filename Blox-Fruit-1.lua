@@ -759,6 +759,29 @@ local holdConn
 local dialogueConn
 local noclipConn
 local farmLoopConn 
+local effectRemoverConn -- ระบบลบแสง
+
+------------------------------------------------------------------------
+-- EFFECT REMOVER (ลบแสงจ้า)
+------------------------------------------------------------------------
+local function startEffectRemover()
+    if effectRemoverConn then effectRemoverConn:Disconnect() end
+    effectRemoverConn = RunService.Heartbeat:Connect(function()
+        if not ENABLED then return end
+        local cam = workspace.CurrentCamera
+        if cam then
+            for _, v in ipairs(cam:GetChildren()) do
+                if v:IsA("PostEffect") or v.Name:find("Effect") then v:Destroy() end
+            end
+        end
+        local char = LP.Character
+        if char then
+            for _, v in ipairs(char:GetDescendants()) do
+                if v:IsA("Light") or v:IsA("ParticleEmitter") then v.Enabled = false end
+            end
+        end
+    end)
+end
 
 ------------------------------------------------------------------------
 -- DISABLE DIALOGUE
@@ -842,7 +865,7 @@ local function redeemOnce()
 end
 
 ------------------------------------------------------------------------
--- QUEST HELPERS
+-- QUEST HELPERS & NOCLIP
 ------------------------------------------------------------------------
 local function hasQuest()
     local pg = LP:FindFirstChild("PlayerGui")
@@ -890,7 +913,7 @@ local function stopNoClip()
 end
 
 ------------------------------------------------------------------------
--- BRING & MODIFY MONSTER (FULL STATUS)
+-- BRING & MODIFY MONSTER (โครงสร้างตามที่คุณส่งมา)
 ------------------------------------------------------------------------
 local function bringAndModifyMobs(mobName, mobLockPos)
     if sethiddenproperty then
@@ -904,7 +927,6 @@ local function bringAndModifyMobs(mobName, mobLockPos)
         if y.Name == mobName and y:FindFirstChild("Humanoid") and y.Humanoid.Health > 0 then
             local yhrp = y:FindFirstChild("HumanoidRootPart")
             if yhrp then
-                -- ดึงมอนสเตอร์มาและล็อคสถานะตามความต้องการ
                 yhrp.CFrame = CFrame.new(mobLockPos)
                 yhrp.Size = Vector3.new(60, 60, 60)
                 yhrp.Transparency = 1
@@ -923,7 +945,7 @@ local function bringAndModifyMobs(mobName, mobLockPos)
 end
 
 ------------------------------------------------------------------------
--- FARM LOOP (ISLAND 1 & 2)
+-- FARM LOOP (1-29) ครบระบบ Fly + SetSpawn
 ------------------------------------------------------------------------
 local function startFarmLoop()
     if farmLoopConn then farmLoopConn:Disconnect() end
@@ -934,6 +956,13 @@ local function startFarmLoop()
         local char = LP.Character
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
         if not hrp then return end
+
+        -- กันจมน้ำ (WaterBase-Plane)
+        local water = workspace:FindFirstChild("Map") and workspace.Map:FindFirstChild("WaterBase-Plane")
+        if water and hrp.Position.Y < (water.Position.Y + 20) then
+            hrp.Velocity = Vector3.new(0, 60, 0)
+            return
+        end
 
         if level >= 1 and level <= 9 then
             ------------------------------------------------------------
@@ -952,8 +981,7 @@ local function startFarmLoop()
                 else
                     hrp.Velocity = Vector3.zero
                     stopNoClip() 
-                    local args = {"StartQuest", "BanditQuest1", 1}
-                    game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer(unpack(args))
+                    game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("StartQuest", "BanditQuest1", 1)
                 end
             else
                 startNoClip()
@@ -969,16 +997,14 @@ local function startFarmLoop()
                 end
             end
 
-        elseif level >= 10 and level <= 14 then
+        elseif level >= 10 and level <= 29 then
             ------------------------------------------------------------
-            -- เกาะที่ 2: Monkey (พิกัดตามที่คุณให้มา)
+            -- เกาะที่ 2: Jungle (Fly & SaveSpawn & Farm)
             ------------------------------------------------------------
             local SPAWN_POS = Vector3.new(-1334.883, 11.886, 496.108)
             local Q_POS = Vector3.new(-1602.307, 36.887, 152.540)
-            local F_POS = Vector3.new(-1699.420, 47.266, -75.152) -- บินไปฟาร์มลอยฟ้า
-            local L_POS = Vector3.new(-1700.433, 22.887, -77.080) -- ดึงมอนมาตรงนี้
-
-            -- 1. เซฟจุดเกิดก่อน (ถ้ายังไม่ได้เซฟ)
+            
+            -- บินไปเซฟจุดเกิดเกาะ Jungle (ระบบที่คุณต้องการ)
             if not SG("SpawnSet_Jungle", false) then
                 startNoClip()
                 local distS = (SPAWN_POS - hrp.Position).Magnitude
@@ -986,14 +1012,27 @@ local function startFarmLoop()
                     hrp.Velocity = (SPAWN_POS - hrp.Position).Unit * 150
                     hrp.CFrame = CFrame.new(hrp.Position, SPAWN_POS)
                 else
-                    local args = {"SetSpawnPoint"}
-                    game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer(unpack(args))
+                    hrp.Velocity = Vector3.zero
+                    game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("SetSpawnPoint")
                     SS("SpawnSet_Jungle", true)
                 end
                 return
             end
 
-            -- 2. รับภารกิจ & ฟาร์ม
+            -- แยกมอน Monkey (10-14) หรือ Gorilla (15-29)
+            local m_name, f_pos, l_pos, q_num
+            if level <= 14 then
+                m_name = "Monkey"
+                f_pos = Vector3.new(-1699.420, 47.266, -75.152)
+                l_pos = Vector3.new(-1700.433, 22.887, -77.080)
+                q_num = 1
+            else
+                m_name = "Gorilla"
+                f_pos = Vector3.new(-1213.795, 34.323, -501.571) -- ฟาร์มลอยฟ้า
+                l_pos = Vector3.new(-1212.747, 6.308, -501.325) -- จุดล็อคมอน
+                q_num = 2
+            end
+
             if not hasQuest() then
                 startNoClip()
                 local distQ = (Q_POS - hrp.Position).Magnitude
@@ -1003,20 +1042,19 @@ local function startFarmLoop()
                 else
                     hrp.Velocity = Vector3.zero
                     stopNoClip()
-                    local args = {"StartQuest", "JungleQuest", 1}
-                    game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer(unpack(args))
+                    game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("StartQuest", "JungleQuest", q_num)
                 end
             else
                 startNoClip()
-                local distF = (F_POS - hrp.Position).Magnitude
+                local distF = (f_pos - hrp.Position).Magnitude
                 if distF > 5 then
-                    hrp.Velocity = (F_POS - hrp.Position).Unit * 150
-                    hrp.CFrame = CFrame.new(hrp.Position, F_POS)
+                    hrp.Velocity = (f_pos - hrp.Position).Unit * 150
+                    hrp.CFrame = CFrame.new(hrp.Position, f_pos)
                 else
                     hrp.Velocity = Vector3.zero
                     hrp.AssemblyLinearVelocity = Vector3.zero 
-                    hrp.CFrame = CFrame.new(F_POS) 
-                    bringAndModifyMobs("Monkey", L_POS)
+                    hrp.CFrame = CFrame.new(f_pos) 
+                    bringAndModifyMobs(m_name, l_pos)
                 end
             end
         end
@@ -1112,15 +1150,6 @@ local layout = scroll:FindFirstChildOfClass("UIListLayout") or Instance.new("UIL
 layout.Padding = UDim.new(0,12)
 scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 
-local header = Instance.new("TextLabel",scroll)
-header.Size=UDim2.new(1,0,0,36)
-header.BackgroundTransparency=1
-header.Font=Enum.Font.GothamBold
-header.TextSize=16
-header.TextColor3=THEME.WHITE
-header.TextXAlignment=Enum.TextXAlignment.Left
-header.Text="Farm Level 🌾"
-
 local row = Instance.new("Frame",scroll)
 row.Size=UDim2.new(1,-6,0,46)
 row.BackgroundColor3=THEME.BLACK
@@ -1135,7 +1164,7 @@ txt.Font=Enum.Font.GothamBold
 txt.TextSize=13
 txt.TextColor3=THEME.WHITE
 txt.TextXAlignment=Enum.TextXAlignment.Left
-txt.Text="Auto Farm Level 1-14"
+txt.Text="Auto Farm Level 1-29"
 
 local sw = Instance.new("Frame",row)
 sw.AnchorPoint=Vector2.new(1,0.5)
@@ -1177,10 +1206,12 @@ btn.MouseButton1Click:Connect(function()
         startHold()
         startDisableDialogue()
         startFarmLoop()
+        startEffectRemover()
     else
         stopHold()
         stopDisableDialogue()
         stopFarmLoop()
+        if effectRemoverConn then effectRemoverConn:Disconnect() effectRemoverConn = nil end
         setDialogueVisible(true)
     end
 end)
@@ -1190,6 +1221,7 @@ if ENABLED then
     startHold()
     startDisableDialogue()
     startFarmLoop()
+    startEffectRemover()
 end
 
 end)
