@@ -758,8 +758,8 @@ end
 local ENABLED = SG("Enabled", false)
 local holdConn
 local dialogueConn
-local flyConn
 local noclipConn
+local farmLoopConn -- ตัวแปรสำหรับ Loop ฟาร์ม
 
 ------------------------------------------------------------------------
 -- DISABLE DIALOGUE
@@ -843,14 +843,30 @@ local function redeemOnce()
 end
 
 ------------------------------------------------------------------------
--- FLY & NOCLIP & ANIMATION STOPPER
+-- MOVEMENT & QUEST LOGIC
 ------------------------------------------------------------------------
+local QUEST_POS = Vector3.new(1059.583,16.459,1547.783)
+
+-- ฟังก์ชันเช็คว่ามีเควสอยู่หรือไม่ (ตามที่ขอ)
+local function hasQuest()
+    local pg = LP:FindFirstChild("PlayerGui")
+    local main = pg and pg:FindFirstChild("Main")
+    local questGui = main and main:FindFirstChild("Quest")
+    -- ถ้า Visible = true แปลว่ามีเควส
+    -- ถ้า Visible = false หรือหาไม่เจอ แปลว่าไม่มีเควส
+    if questGui and questGui.Visible then
+        return true
+    end
+    return false
+end
+
+-- หยุดอนิเมชั่นเดิน/วิ่ง เพื่อให้ตัวนิ่งตอนบิน
 local function stopAnims()
-    -- ฟังก์ชันหยุดท่าเดิน/วิ่ง เพื่อให้ตัวนิ่งเวลาบิน
     local char = LP.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     if hum then
-        hum:ChangeState(Enum.HumanoidStateType.Physics) -- ทำให้ตัวเบาและไม่เล่นท่าเดินพื้น
+        -- ใช้ Physics state เพื่อให้ตัวลอยนิ่ง ไม่ขยับขา
+        hum:ChangeState(Enum.HumanoidStateType.Physics)
         local animator = hum:FindFirstChildOfClass("Animator")
         if animator then
             for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
@@ -862,13 +878,15 @@ local function stopAnims()
     end
 end
 
+-- เปิดโหมดทะลุ
 local function startNoClip()
     if noclipConn then noclipConn:Disconnect() end
     noclipConn = RunService.Stepped:Connect(function()
         if not ENABLED then return end
         local c = LP.Character
         if c then
-            stopAnims() -- เรียกใช้หยุดอนิเมชั่นตลอดเวลาที่ทะลุ
+            -- สั่งหยุดอนิเมชั่นตลอดเวลาที่ Noclip ทำงาน
+            stopAnims()
             for _,v in ipairs(c:GetDescendants()) do
                 if v:IsA("BasePart") then v.CanCollide = false end
             end
@@ -876,56 +894,62 @@ local function startNoClip()
     end)
 end
 
+-- ปิดโหมดทะลุ (คืนค่าให้ยืนบนพื้นได้)
 local function stopNoClip()
     if noclipConn then noclipConn:Disconnect() noclipConn=nil end
     local char = LP.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     if hum then 
-        -- คืนค่าสถานะเพื่อให้ยืนบน Map ได้ ไม่ตกโลก
         hum:ChangeState(Enum.HumanoidStateType.GettingUp) 
     end
 end
 
-local function flyStraightTo(pos)
-    if flyConn then flyConn:Disconnect() end
-    flyConn = RunService.Heartbeat:Connect(function()
-        if not ENABLED then return end
-        local c = LP.Character
-        local hrp = c and c:FindFirstChild("HumanoidRootPart")
-        if not hrp then return end
-
-        local dir = (pos - hrp.Position)
-        if dir.Magnitude < 3 then
-            hrp.Velocity = Vector3.zero
-            -- [[ มิ้นถึงตำแหน่งแล้ว: สั่งหยุดบินและหยุดทะลุทันที ]]
-            stopNoClip() 
-            flyConn:Disconnect()
-            return
-        end
-
-        hrp.Velocity = dir.Unit * 125
-        hrp.CFrame = CFrame.new(hrp.Position, hrp.Position + dir)
-    end)
-end
-
-------------------------------------------------------------------------
--- WORLD 1 • PHASE FARM
-------------------------------------------------------------------------
-local QUEST_POS = Vector3.new(1059.583,16.459,1547.783)
-
+-- ฟังก์ชันรับเควส
 local function takeQuest()
     local args = {"StartQuest", "BanditQuest1", 1}
     ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer(unpack(args))
 end
 
-local function phaseFarmWorld1()
-    if getLevel() >= 1 and getLevel() <= 9 then
-        startNoClip()
-        flyStraightTo(QUEST_POS)
-        task.delay(2.5, function()
-            if ENABLED then takeQuest() end
-        end)
-    end
+-- ลูปหลักของการฟาร์ม (เช็คเควส -> บิน -> รับ -> ตี)
+local function startFarmLoop()
+    if farmLoopConn then farmLoopConn:Disconnect() end
+    
+    farmLoopConn = RunService.Heartbeat:Connect(function()
+        if not ENABLED then return end
+        if getLevel() > 9 then return end -- ทำงานเฉพาะเลเวล 1-9
+        
+        local char = LP.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
+
+        if not hasQuest() then
+            -- [[ กรณีไม่มีเควส (Visible = False) ]]
+            -- ให้บินไปรับเควส
+            startNoClip() -- เปิดทะลุ + หยุดขา
+            
+            local dist = (QUEST_POS - hrp.Position).Magnitude
+            if dist > 3 then
+                -- ยังไม่ถึง: บินไปหา
+                hrp.Velocity = (QUEST_POS - hrp.Position).Unit * 125
+                hrp.CFrame = CFrame.new(hrp.Position, QUEST_POS)
+            else
+                -- ถึงแล้ว: หยุดบิน หยุดทะลุ และรับเควส
+                hrp.Velocity = Vector3.zero
+                stopNoClip()
+                takeQuest()
+            end
+        else
+            -- [[ กรณีมีเควสแล้ว (Visible = True) ]]
+            -- ให้หยุดระบบบิน และหยุดทะลุ เพื่อให้ Aura ทำงานตีมอนสเตอร์ปกติ
+            stopNoClip()
+            -- ตรงนี้ตัวละครจะยืนบนพื้นปกติ พร้อมตีมอนด้วย SSS1 Aura
+        end
+    end)
+end
+
+local function stopFarmLoop()
+    if farmLoopConn then farmLoopConn:Disconnect() farmLoopConn = nil end
+    stopNoClip()
 end
 
 ------------------------------------------------------------------------
@@ -937,7 +961,7 @@ getgenv().UFO_Data = {
 }
 
 getgenv().UFO_Combat = {
-    Enabled = ENABLED, -- เริ่มต้นตามค่า Save
+    Enabled = ENABLED,
     AuraRange = 1000,
     AttackPerStep = 5,
     BatchSize = 2
@@ -1069,7 +1093,6 @@ btn.MouseButton1Click:Connect(function()
     SS("Enabled",ENABLED)
     refresh()
 
-    -- เชื่อมสวิตช์ UI เข้ากับ Aura ทันที
     getgenv().UFO_Combat.Enabled = ENABLED 
 
     if ENABLED then
@@ -1077,21 +1100,21 @@ btn.MouseButton1Click:Connect(function()
         equipCombat()
         startHold()
         startDisableDialogue()
-        phaseFarmWorld1()
+        startFarmLoop() -- เริ่มระบบเช็คเควสและบิน
     else
         stopHold()
         stopDisableDialogue()
-        stopNoClip()
+        stopFarmLoop() -- หยุดทุกอย่าง
         setDialogueVisible(true)
     end
 end)
 
--- รันค่าเริ่มต้น (กรณีเปิดมาแล้วเปิดอยู่แล้ว)
+-- รันค่าเริ่มต้น
 refresh()
 if ENABLED then
     startHold()
     startDisableDialogue()
-    phaseFarmWorld1()
+    startFarmLoop()
 end
 
 end)
