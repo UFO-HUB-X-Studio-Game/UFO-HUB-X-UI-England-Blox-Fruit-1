@@ -915,6 +915,7 @@ local function checkAndAbandonQuest(currentLevel)
     
     if questGui and questGui.Visible then
         local questName = questGui.Container.QuestTitle.Title.Text
+        -- ล้างเควสเกาะแรกถ้าเลเวลถึงเกาะสอง
         if currentLevel >= 10 and (questName:find("Bandit") or questName:find("โจร")) then
             forceAbandonQuest()
         end
@@ -995,6 +996,9 @@ end
 local function startFarmLoop()
     if farmLoopConn then farmLoopConn:Disconnect() end
     
+    -- บังคับล้างภารกิจเก่าทิ้งทันทีที่เริ่ม Loop (เมื่อเปิดสวิตช์)
+    forceAbandonQuest()
+
     farmLoopConn = RunService.Heartbeat:Connect(function()
         if not ENABLED then return end
         local level = getLevel()
@@ -1060,7 +1064,6 @@ local function startFarmLoop()
                 if not isResettingForSpawn then
                     isResettingForSpawn = true 
                     
-                    -- ปิด NoClip ก่อนวาร์ปไปเซฟ
                     stopNoClip()
                     task.wait(0.1)
                     
@@ -1069,13 +1072,13 @@ local function startFarmLoop()
                     
                     task.wait(0.5) 
                     
-                    -- [แก้ไขใหม่] วนลูปกดเซฟจุดเกิด 5 ครั้ง
                     for i = 1, 5 do
                         game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("SetSpawnPoint")
-                        task.wait(0.2) -- เว้นช่วงเล็กน้อยระหว่างการกดแต่ละครั้ง
+                        task.wait(0.1) 
                     end
                     
-                    task.wait(3.0) -- รอก่อนฆ่าตัวตาย 3 วินาทีตามที่ขอ
+                    -- [แก้ไข] กลับมาใช้ 2.0 วินาทีตามต้องการ
+                    task.wait(2.0) 
                     hasSetSpawnThisSession = true
                     hum.Health = 0 
                 end
@@ -1263,13 +1266,13 @@ btn.MouseButton1Click:Connect(function()
     getgenv().UFO_Combat.Enabled = ENABLED 
 
     if ENABLED then
-        forceAbandonQuest() 
-        redeemOnce()
-        equipCombat()
+        -- เรียกใช้ Loop เลย ซึ่งข้างในมี forceAbandonQuest() อยู่แล้ว
         startHold()
         startDisableDialogue()
         startFarmLoop()
         startEffectRemover()
+        redeemOnce()
+        equipCombat()
     else
         hasSetSpawnThisSession = false 
         isResettingForSpawn = false 
