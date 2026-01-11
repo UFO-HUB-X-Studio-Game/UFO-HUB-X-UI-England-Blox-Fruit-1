@@ -760,9 +760,10 @@ local dialogueConn
 local noclipConn
 local farmLoopConn 
 local effectRemoverConn
+local lastSafeY = 50 -- ระบบจดจำความสูงล่าสุดที่ปลอดภัย
 
 ------------------------------------------------------------------------
--- EFFECT REMOVER (ลบแสงจ้าแบบครบถ้วน)
+-- EFFECT REMOVER
 ------------------------------------------------------------------------
 local function startEffectRemover()
     if effectRemoverConn then effectRemoverConn:Disconnect() end
@@ -940,26 +941,40 @@ local function bringAndModifyMobs(mobName, mobLockPos)
 end
 
 ------------------------------------------------------------------------
--- FARM LOOP (1-29) - แก้หน่วง + ไม่จมน้ำ
+-- MOVE TO (ระบบจดจำความสูง Y บนเกาะ)
+------------------------------------------------------------------------
+local function fastMove(targetPos, speed)
+    local char = LP.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    local dist = (targetPos - hrp.Position).Magnitude
+    if dist > 5 then
+        -- ถ้าเท้าอยู่บนเกาะ (ความสูงไม่เปลี่ยนมาก) ให้บันทึก Y ไว้
+        if math.abs(hrp.Velocity.Y) < 1 then
+            lastSafeY = hrp.Position.Y
+        end
+
+        -- บินโดยล็อคความสูงคงที่จากเกาะ (บวกเผื่อไว้นิดหน่อยกันมุด)
+        local flyTarget = Vector3.new(targetPos.X, lastSafeY + 5, targetPos.Z)
+        hrp.Velocity = (flyTarget - hrp.Position).Unit * (speed or 125)
+        hrp.CFrame = CFrame.new(hrp.Position, flyTarget)
+    else
+        hrp.Velocity = Vector3.zero
+    end
+end
+
+------------------------------------------------------------------------
+-- FARM LOOP (1-29)
 ------------------------------------------------------------------------
 local function startFarmLoop()
     if farmLoopConn then farmLoopConn:Disconnect() end
-    
     farmLoopConn = RunService.Heartbeat:Connect(function()
         if not ENABLED then return end
         local level = getLevel()
         local char = LP.Character
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
         if not hrp then return end
-
-        -- [[ ระบบกันจมน้ำ & แก้หน่วงตอนบิน ]]
-        local water = workspace:FindFirstChild("Map") and workspace.Map:FindFirstChild("WaterBase-Plane")
-        local isUnderWater = water and hrp.Position.Y < (water.Position.Y + 25)
-        
-        if isUnderWater or hrp.Position.Y < 35 then
-            hrp.Velocity = Vector3.new(hrp.Velocity.X, 75, hrp.Velocity.Z)
-            return -- ข้ามการคำนวณด้านล่างเพื่อลดอาการหน่วงขณะดีดตัว
-        end
 
         if level >= 1 and level <= 9 then
             local Q_POS = Vector3.new(1059.583, 16.459, 1547.783)
@@ -968,25 +983,16 @@ local function startFarmLoop()
 
             if not hasQuest() then
                 startNoClip()
-                local dist = (Q_POS - hrp.Position).Magnitude
-                if dist > 3 then
-                    -- แก้หน่วง: บินด้วยความเร็วคงที่
-                    hrp.Velocity = (Q_POS - hrp.Position).Unit * 125
-                    hrp.CFrame = CFrame.new(hrp.Position, Q_POS)
-                else
-                    hrp.Velocity = Vector3.zero
+                fastMove(Q_POS, 125)
+                if (Q_POS - hrp.Position).Magnitude < 10 then
                     stopNoClip() 
                     game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("StartQuest", "BanditQuest1", 1)
                 end
             else
                 startNoClip()
-                local dist = (F_POS - hrp.Position).Magnitude
-                if dist > 3 then
-                    hrp.Velocity = (F_POS - hrp.Position).Unit * 125
-                    hrp.CFrame = CFrame.new(hrp.Position, F_POS)
-                else
+                fastMove(F_POS, 125)
+                if (F_POS - hrp.Position).Magnitude < 10 then
                     hrp.Velocity = Vector3.zero
-                    hrp.AssemblyLinearVelocity = Vector3.zero 
                     hrp.CFrame = CFrame.new(F_POS) 
                     bringAndModifyMobs("Bandit", L_POS)
                 end
@@ -998,16 +1004,8 @@ local function startFarmLoop()
             
             if not SG("SpawnSet_Jungle", false) then
                 startNoClip()
-                -- ล็อคความสูงบินข้ามทะเลไว้ที่ 85 เพื่อไม่ให้หน่วงและไม่ตกน้ำ
-                local flyPos = Vector3.new(SPAWN_POS.X, 85, SPAWN_POS.Z)
-                local distS = (flyPos - hrp.Position).Magnitude
-                if distS > 5 then
-                    hrp.Velocity = (flyPos - hrp.Position).Unit * 150
-                    hrp.CFrame = CFrame.new(hrp.Position, flyPos)
-                else
-                    hrp.Velocity = Vector3.zero
-                    hrp.CFrame = CFrame.new(SPAWN_POS)
-                    task.wait(0.5)
+                fastMove(SPAWN_POS, 150)
+                if (SPAWN_POS - hrp.Position).Magnitude < 10 then
                     game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("SetSpawnPoint")
                     SS("SpawnSet_Jungle", true)
                 end
@@ -1016,37 +1014,23 @@ local function startFarmLoop()
 
             local m_name, f_pos, l_pos, q_num
             if level <= 14 then
-                m_name = "Monkey"
-                f_pos = Vector3.new(-1699.420, 47.266, -75.152)
-                l_pos = Vector3.new(-1700.433, 22.887, -77.080)
-                q_num = 1
+                m_name, f_pos, l_pos, q_num = "Monkey", Vector3.new(-1699.420, 47.266, -75.152), Vector3.new(-1700.433, 22.887, -77.080), 1
             else
-                m_name = "Gorilla"
-                f_pos = Vector3.new(-1213.795, 34.323, -501.571)
-                l_pos = Vector3.new(-1212.747, 6.308, -501.325)
-                q_num = 2
+                m_name, f_pos, l_pos, q_num = "Gorilla", Vector3.new(-1213.795, 34.323, -501.571), Vector3.new(-1212.747, 6.308, -501.325), 2
             end
 
             if not hasQuest() then
                 startNoClip()
-                local distQ = (Q_POS - hrp.Position).Magnitude
-                if distQ > 5 then
-                    hrp.Velocity = (Q_POS - hrp.Position).Unit * 150
-                    hrp.CFrame = CFrame.new(hrp.Position, Q_POS)
-                else
-                    hrp.Velocity = Vector3.zero
+                fastMove(Q_POS, 150)
+                if (Q_POS - hrp.Position).Magnitude < 10 then
                     stopNoClip()
                     game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("StartQuest", "JungleQuest", q_num)
                 end
             else
                 startNoClip()
-                local distF = (f_pos - hrp.Position).Magnitude
-                if distF > 5 then
-                    hrp.Velocity = (f_pos - hrp.Position).Unit * 150
-                    hrp.CFrame = CFrame.new(hrp.Position, f_pos)
-                else
+                fastMove(f_pos, 150)
+                if (f_pos - hrp.Position).Magnitude < 10 then
                     hrp.Velocity = Vector3.zero
-                    hrp.AssemblyLinearVelocity = Vector3.zero 
                     hrp.CFrame = CFrame.new(f_pos) 
                     bringAndModifyMobs(m_name, l_pos)
                 end
@@ -1063,17 +1047,8 @@ end
 ------------------------------------------------------------------------
 -- ===================== SSS1 CORE (AURA) =====================
 ------------------------------------------------------------------------
-getgenv().UFO_Data = {
-    CurrentKey = "6038e23a",
-    LastHrpName = "HumanoidRootPart"
-}
-
-getgenv().UFO_Combat = {
-    Enabled = ENABLED,
-    AuraRange = 1000,
-    AttackPerStep = 5,
-    BatchSize = 2
-}
+getgenv().UFO_Data = { CurrentKey = "6038e23a", LastHrpName = "HumanoidRootPart" }
+getgenv().UFO_Combat = { Enabled = ENABLED, AuraRange = 1000, AttackPerStep = 5, BatchSize = 2 }
 
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
@@ -1087,7 +1062,6 @@ oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
 end)
 
 local targetIndex = 1
-
 RunService.Heartbeat:Connect(function()
     if not getgenv().UFO_Combat.Enabled then return end
     pcall(function()
@@ -1113,7 +1087,7 @@ RunService.Heartbeat:Connect(function()
                     local targetPart = target:FindFirstChild(getgenv().UFO_Data.LastHrpName) or target:FindFirstChild("HumanoidRootPart")
                     task.spawn(function()
                         netRE:WaitForChild("RE/RegisterAttack"):FireServer(0.5)
-                        for b = 1, getgenv().UFO_Combat.BatchSize do
+                        for b = 1, getgenv().UFO_Combat.AttackPerStep do
                             netRE:WaitForChild("RE/RegisterHit"):FireServer(unpack({
                                 [1] = targetPart,
                                 [2] = {},
@@ -1189,6 +1163,7 @@ btn.MouseButton1Click:Connect(function()
     SS("Enabled",ENABLED)
     refresh()
     getgenv().UFO_Combat.Enabled = ENABLED 
+
     if ENABLED then
         redeemOnce()
         equipCombat()
