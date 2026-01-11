@@ -691,6 +691,7 @@ end)
 
 registerRight("Home", function(scroll) end)
 registerRight("Settings", function(scroll) end)
+--===== UFO HUB X • Home • Farm Level 🌾 (Model A V1 + AA1 + SSS1 + Phase Farm World 1) =====
 registerRight("Home", function(scroll)
 
 ------------------------------------------------------------------------
@@ -711,22 +712,26 @@ local function getLevel()
 end
 
 ------------------------------------------------------------------------
--- AA1 SAVE SYSTEM
+-- AA1 SAVE
 ------------------------------------------------------------------------
 local SAVE = getgenv().UFOX_SAVE
 local SCOPE = ("AA1/FarmLevel/%d/%d/%s"):format(game.PlaceId, LP.UserId, LP.Name)
 
 local function SG(k,d)
-    local ok,v = pcall(function() return SAVE.get(SCOPE.."/"..k,d) end)
+    local ok,v = pcall(function()
+        return SAVE.get(SCOPE.."/"..k,d)
+    end)
     return ok and v or d
 end
 
 local function SS(k,v)
-    pcall(function() SAVE.set(SCOPE.."/"..k,v) end)
+    pcall(function()
+        SAVE.set(SCOPE.."/"..k,v)
+    end)
 end
 
 ------------------------------------------------------------------------
--- THEME & UI UTILS
+-- THEME
 ------------------------------------------------------------------------
 local THEME = {
     GREEN = Color3.fromRGB(25,255,125),
@@ -748,40 +753,22 @@ local function stroke(ui,t,col)
 end
 
 local function tween(o,p,d)
-    TweenService:Create(o, TweenInfo.new(d or 0.1, Enum.EasingStyle.Linear), p):Play()
+    TweenService:Create(
+        o,
+        TweenInfo.new(d or 0.1, Enum.EasingStyle.Linear),
+        p
+    ):Play()
 end
 
 ------------------------------------------------------------------------
--- STATE & CONNECTIONS
+-- STATE
 ------------------------------------------------------------------------
 local ENABLED = SG("Enabled", false)
 local holdConn
 local dialogueConn
+local flyConn
 local noclipConn
-local farmLoopConn 
-local effectRemoverConn
-local lastSafeY = 50 -- ระบบจดจำความสูงล่าสุดที่ปลอดภัย
-
-------------------------------------------------------------------------
--- EFFECT REMOVER
-------------------------------------------------------------------------
-local function startEffectRemover()
-    if effectRemoverConn then effectRemoverConn:Disconnect() end
-    effectRemoverConn = RunService.Heartbeat:Connect(function()
-        if not ENABLED then return end
-        local cam = workspace.CurrentCamera
-        if cam then
-            for _, v in ipairs(cam:GetChildren()) do
-                if v:IsA("PostEffect") or v.Name:find("Effect") then v:Destroy() end
-            end
-        end
-        for _, v in ipairs(workspace:GetDescendants()) do
-            if v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Light") then
-                v.Enabled = false
-            end
-        end
-    end)
-end
+local farmLoopConn
 
 ------------------------------------------------------------------------
 -- DISABLE DIALOGUE
@@ -834,29 +821,27 @@ local function startHold()
         if not ENABLED then return end
         local c = LP.Character
         local h = c and c:FindFirstChildOfClass("Humanoid")
-        if h and not h:FindFirstChildOfClass("Tool") then equipCombat() end
+        if h and not h:FindFirstChildOfClass("Tool") then
+            equipCombat()
+        end
     end)
-end
-
-local function stopHold()
-    if holdConn then holdConn:Disconnect() holdConn=nil end
 end
 
 ------------------------------------------------------------------------
 -- REDEEM ONCE
 ------------------------------------------------------------------------
 local CODES = {
-    "LIGHTNINGABUSE","KITT_RESET","SUB2OFFICIALNOOBIE","BIGNEWS","BLUXXY",
-    "CHANDLER","FUDD10","ENYU_IS_PRO","FUDD10_V2","JCWK","KITTGAMING",
-    "MAGICBUS","STARCODEHEO","STRAWHATMAINE","SUB2CAPTAINMAUI",
-    "SUB2DAIGROCK","SUB2FER999","SUB2GAMERROBOT_EXP1",
-    "SUB2GAMERROBOT_RESET1","SUB2NOOBMASTER123","TANTAIGAMING",
-    "THEGREATACE","SUB2UNCLEKIZARU"
+"LIGHTNINGABUSE","KITT_RESET","SUB2OFFICIALNOOBIE","BIGNEWS","BLUXXY",
+"CHANDLER","FUDD10","ENYU_IS_PRO","FUDD10_V2","JCWK","KITTGAMING",
+"MAGICBUS","STARCODEHEO","STRAWHATMAINE","SUB2CAPTAINMAUI",
+"SUB2DAIGROCK","SUB2FER999","SUB2GAMERROBOT_EXP1",
+"SUB2GAMERROBOT_RESET1","SUB2NOOBMASTER123","TANTAIGAMING",
+"THEGREATACE","SUB2UNCLEKIZARU"
 }
 
 local function redeemOnce()
     if SG("Redeemed",false) then return end
-    local r = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Redeem")
+    local r = ReplicatedStorage.Remotes.Redeem
     for _,c in ipairs(CODES) do
         pcall(function() r:InvokeServer(c) end)
         task.wait(0.1)
@@ -865,39 +850,14 @@ local function redeemOnce()
 end
 
 ------------------------------------------------------------------------
--- QUEST HELPERS & NOCLIP
+-- MOVEMENT
 ------------------------------------------------------------------------
-local function hasQuest()
-    local pg = LP:FindFirstChild("PlayerGui")
-    local main = pg and pg:FindFirstChild("Main")
-    local questGui = main and main:FindFirstChild("Quest")
-    if questGui and questGui.Visible then return true end
-    return false
-end
-
-local function stopAnims()
-    local char = LP.Character
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-    if hum then
-        hum:ChangeState(Enum.HumanoidStateType.Physics)
-        local animator = hum:FindFirstChildOfClass("Animator")
-        if animator then
-            for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
-                if track.Name:lower():find("walk") or track.Name:lower():find("run") or track.Name:lower():find("climb") then
-                    track:Stop()
-                end
-            end
-        end
-    end
-end
-
 local function startNoClip()
     if noclipConn then noclipConn:Disconnect() end
     noclipConn = RunService.Stepped:Connect(function()
         if not ENABLED then return end
         local c = LP.Character
         if c then
-            stopAnims()
             for _,v in ipairs(c:GetDescendants()) do
                 if v:IsA("BasePart") then v.CanCollide = false end
             end
@@ -905,150 +865,99 @@ local function startNoClip()
     end)
 end
 
-local function stopNoClip()
-    if noclipConn then noclipConn:Disconnect() noclipConn=nil end
-    local char = LP.Character
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-    if hum then hum:ChangeState(Enum.HumanoidStateType.GettingUp) end
-end
+local function flyStraightTo(pos)
+    if flyConn then flyConn:Disconnect() end
+    flyConn = RunService.Heartbeat:Connect(function()
+        if not ENABLED then return end
+        local c = LP.Character
+        local hrp = c and c:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
 
-------------------------------------------------------------------------
--- BRING & MODIFY MONSTER (ยึดตามต้นฉบับ 100%)
-------------------------------------------------------------------------
-local function bringAndModifyMobs(mobName, mobLockPos)
-    if sethiddenproperty then
-        sethiddenproperty(game.Players.LocalPlayer, "SimulationRadius", math.huge)
-    end
-    local enemies = workspace:FindFirstChild("Enemies")
-    if not enemies then return end
-    for _, y in ipairs(enemies:GetChildren()) do
-        if y.Name == mobName and y:FindFirstChild("Humanoid") and y.Humanoid.Health > 0 then
-            local yhrp = y:FindFirstChild("HumanoidRootPart")
-            if yhrp then
-                yhrp.CFrame = CFrame.new(mobLockPos)
-                yhrp.Size = Vector3.new(60, 60, 60)
-                yhrp.Transparency = 1
-                yhrp.CanCollide = false
-                y.Humanoid.WalkSpeed = 0
-                y.Humanoid.JumpPower = 0
-                yhrp.CFrame = yhrp.CFrame
-                yhrp.CanCollide = false
-                y.Humanoid.WalkSpeed = 0
-                y.Humanoid.JumpPower = 0
-            end
-        end
-    end
-end
-
-------------------------------------------------------------------------
--- MOVE TO (ระบบจดจำความสูง Y บนเกาะ)
-------------------------------------------------------------------------
-local function fastMove(targetPos, speed)
-    local char = LP.Character
-    local hrp = char and char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-
-    local dist = (targetPos - hrp.Position).Magnitude
-    if dist > 5 then
-        -- ถ้าเท้าอยู่บนเกาะ (ความสูงไม่เปลี่ยนมาก) ให้บันทึก Y ไว้
-        if math.abs(hrp.Velocity.Y) < 1 then
-            lastSafeY = hrp.Position.Y
+        local dir = (pos - hrp.Position)
+        if dir.Magnitude < 3 then
+            hrp.Velocity = Vector3.zero
+            return
         end
 
-        -- บินโดยล็อคความสูงคงที่จากเกาะ (บวกเผื่อไว้นิดหน่อยกันมุด)
-        local flyTarget = Vector3.new(targetPos.X, lastSafeY + 5, targetPos.Z)
-        hrp.Velocity = (flyTarget - hrp.Position).Unit * (speed or 125)
-        hrp.CFrame = CFrame.new(hrp.Position, flyTarget)
-    else
-        hrp.Velocity = Vector3.zero
-    end
+        hrp.Velocity = dir.Unit * 125
+        hrp.CFrame = CFrame.new(hrp.Position, hrp.Position + dir)
+    end)
 end
 
 ------------------------------------------------------------------------
--- FARM LOOP (1-29)
+-- PHASE FARM LOGIC (1-29) • ด้วยระบบ Bypass
 ------------------------------------------------------------------------
+local function takeQuest(name, num)
+    ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("StartQuest", name, num)
+end
+
 local function startFarmLoop()
     if farmLoopConn then farmLoopConn:Disconnect() end
+    startNoClip()
+    
     farmLoopConn = RunService.Heartbeat:Connect(function()
         if not ENABLED then return end
         local level = getLevel()
         local char = LP.Character
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
-        if not hrp then return end
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if not hrp or not hum or hum.Health <= 0 then return end
 
         if level >= 1 and level <= 9 then
-            local Q_POS = Vector3.new(1059.583, 16.459, 1547.783)
-            local F_POS = Vector3.new(1196.068, 42.290, 1613.823)
-            local L_POS = Vector3.new(1195.924, 16.739, 1613.705)
-
-            if not hasQuest() then
-                startNoClip()
-                fastMove(Q_POS, 125)
-                if (Q_POS - hrp.Position).Magnitude < 10 then
-                    stopNoClip() 
-                    game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("StartQuest", "BanditQuest1", 1)
+            local QUEST_POS = Vector3.new(1059.583, 16.459, 1547.783)
+            if not LP.PlayerGui.Main.Quest.Visible then
+                flyStraightTo(QUEST_POS)
+                if (QUEST_POS - hrp.Position).Magnitude < 10 then
+                    takeQuest("BanditQuest1", 1)
                 end
             else
-                startNoClip()
-                fastMove(F_POS, 125)
-                if (F_POS - hrp.Position).Magnitude < 10 then
-                    hrp.Velocity = Vector3.zero
-                    hrp.CFrame = CFrame.new(F_POS) 
-                    bringAndModifyMobs("Bandit", L_POS)
-                end
+                local MON_POS = Vector3.new(1196.068, 42.290, 1613.823)
+                flyStraightTo(MON_POS)
             end
 
         elseif level >= 10 and level <= 29 then
-            local SPAWN_POS = Vector3.new(-1334.883, 11.886, 496.108)
-            local Q_POS = Vector3.new(-1602.307, 36.887, 152.540)
+            local J_SPAWN = Vector3.new(-1334.883, 11.886, 496.108)
+            local J_QUEST = Vector3.new(-1602.307, 36.887, 152.540)
             
+            -- [[ BYPASS: ย้ายเกาะด้วยการรีเซ็ต ]]
             if not SG("SpawnSet_Jungle", false) then
-                startNoClip()
-                fastMove(SPAWN_POS, 150)
-                if (SPAWN_POS - hrp.Position).Magnitude < 10 then
-                    game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("SetSpawnPoint")
-                    SS("SpawnSet_Jungle", true)
-                end
+                if flyConn then flyConn:Disconnect() end
+                hrp.CFrame = CFrame.new(J_SPAWN)
+                task.wait(0.5)
+                ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("SetSpawnPoint")
+                SS("SpawnSet_Jungle", true)
+                task.wait(0.1)
+                hum.Health = 0
                 return
             end
 
-            local m_name, f_pos, l_pos, q_num
-            if level <= 14 then
-                m_name, f_pos, l_pos, q_num = "Monkey", Vector3.new(-1699.420, 47.266, -75.152), Vector3.new(-1700.433, 22.887, -77.080), 1
-            else
-                m_name, f_pos, l_pos, q_num = "Gorilla", Vector3.new(-1213.795, 34.323, -501.571), Vector3.new(-1212.747, 6.308, -501.325), 2
-            end
-
-            if not hasQuest() then
-                startNoClip()
-                fastMove(Q_POS, 150)
-                if (Q_POS - hrp.Position).Magnitude < 10 then
-                    stopNoClip()
-                    game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("StartQuest", "JungleQuest", q_num)
+            if not LP.PlayerGui.Main.Quest.Visible then
+                flyStraightTo(J_QUEST)
+                if (J_QUEST - hrp.Position).Magnitude < 10 then
+                    takeQuest("JungleQuest", level <= 14 and 1 or 2)
                 end
             else
-                startNoClip()
-                fastMove(f_pos, 150)
-                if (f_pos - hrp.Position).Magnitude < 10 then
-                    hrp.Velocity = Vector3.zero
-                    hrp.CFrame = CFrame.new(f_pos) 
-                    bringAndModifyMobs(m_name, l_pos)
-                end
+                local MON_POS = level <= 14 and Vector3.new(-1699.420, 47.266, -75.152) or Vector3.new(-1213.795, 34.323, -501.571)
+                flyStraightTo(MON_POS)
             end
         end
     end)
 end
 
-local function stopFarmLoop()
-    if farmLoopConn then farmLoopConn:Disconnect() farmLoopConn = nil end
-    stopNoClip()
-end
+------------------------------------------------------------------------
+-- ===================== SSS1 CORE (EXACT 100%) =====================
+------------------------------------------------------------------------
+getgenv().UFO_Data = {
+    CurrentKey = "6038e23a",
+    LastHrpName = "HumanoidRootPart"
+}
 
-------------------------------------------------------------------------
--- ===================== SSS1 CORE (AURA) =====================
-------------------------------------------------------------------------
-getgenv().UFO_Data = { CurrentKey = "6038e23a", LastHrpName = "HumanoidRootPart" }
-getgenv().UFO_Combat = { Enabled = ENABLED, AuraRange = 1000, AttackPerStep = 5, BatchSize = 2 }
+getgenv().UFO_Combat = {
+    Enabled = false,
+    AuraRange = 1000,
+    AttackPerStep = 5,
+    BatchSize = 2
+}
 
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
@@ -1062,12 +971,14 @@ oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
 end)
 
 local targetIndex = 1
+
 RunService.Heartbeat:Connect(function()
     if not getgenv().UFO_Combat.Enabled then return end
     pcall(function()
         local char = LP.Character
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
         if not hrp then return end
+
         local enemies = workspace:FindFirstChild("Enemies")
         if enemies then
             local allTargets = {}
@@ -1080,14 +991,16 @@ RunService.Heartbeat:Connect(function()
                     end
                 end
             end
+
             if #allTargets > 0 then
                 for i = 1, getgenv().UFO_Combat.AttackPerStep do
                     targetIndex = (targetIndex % #allTargets) + 1
                     local target = allTargets[targetIndex]
                     local targetPart = target:FindFirstChild(getgenv().UFO_Data.LastHrpName) or target:FindFirstChild("HumanoidRootPart")
+
                     task.spawn(function()
                         netRE:WaitForChild("RE/RegisterAttack"):FireServer(0.5)
-                        for b = 1, getgenv().UFO_Combat.AttackPerStep do
+                        for b = 1, getgenv().UFO_Combat.BatchSize do
                             netRE:WaitForChild("RE/RegisterHit"):FireServer(unpack({
                                 [1] = targetPart,
                                 [2] = {},
@@ -1109,11 +1022,20 @@ RunService.Stepped:Connect(function()
 end)
 
 ------------------------------------------------------------------------
--- UI GENERATION
+-- UI MODEL A V1
 ------------------------------------------------------------------------
 local layout = scroll:FindFirstChildOfClass("UIListLayout") or Instance.new("UIListLayout",scroll)
 layout.Padding = UDim.new(0,12)
 scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+
+local header = Instance.new("TextLabel",scroll)
+header.Size=UDim2.new(1,0,0,36)
+header.BackgroundTransparency=1
+header.Font=Enum.Font.GothamBold
+header.TextSize=16
+header.TextColor3=THEME.WHITE
+header.TextXAlignment=Enum.TextXAlignment.Left
+header.Text="Farm Level 🌾"
 
 local row = Instance.new("Frame",scroll)
 row.Size=UDim2.new(1,-6,0,46)
@@ -1129,7 +1051,7 @@ txt.Font=Enum.Font.GothamBold
 txt.TextSize=13
 txt.TextColor3=THEME.WHITE
 txt.TextXAlignment=Enum.TextXAlignment.Left
-txt.Text="Auto Farm Level 1-29"
+txt.Text="Auto Farm Level"
 
 local sw = Instance.new("Frame",row)
 sw.AnchorPoint=Vector2.new(1,0.5)
@@ -1162,7 +1084,6 @@ btn.MouseButton1Click:Connect(function()
     ENABLED = not ENABLED
     SS("Enabled",ENABLED)
     refresh()
-    getgenv().UFO_Combat.Enabled = ENABLED 
 
     if ENABLED then
         redeemOnce()
@@ -1170,22 +1091,21 @@ btn.MouseButton1Click:Connect(function()
         startHold()
         startDisableDialogue()
         startFarmLoop()
-        startEffectRemover()
+        getgenv().UFO_Combat.Enabled = true
     else
+        if farmLoopConn then farmLoopConn:Disconnect() end
+        if flyConn then flyConn:Disconnect() end
+        if noclipConn then noclipConn:Disconnect() end
         stopHold()
-        stopDisableDialogue()
-        stopFarmLoop()
-        if effectRemoverConn then effectRemoverConn:Disconnect() effectRemoverConn = nil end
         setDialogueVisible(true)
+        getgenv().UFO_Combat.Enabled = false
     end
 end)
 
 refresh()
 if ENABLED then
-    startHold()
-    startDisableDialogue()
     startFarmLoop()
-    startEffectRemover()
+    getgenv().UFO_Combat.Enabled = true
 end
 
 end)
