@@ -708,6 +708,7 @@ local netRE = ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Net")
 -- SESSION CHECK (ระบบเช็คการปิดเปิดสวิตช์)
 ------------------------------------------------------------------------
 local hasSetSpawnThisSession = false 
+local isResettingForSpawn = false -- ตัวแปรใหม่: เช็คว่ากำลังอยู่ในขั้นตอนรีเซ็ตจุดเกิดหรือไม่
 
 ------------------------------------------------------------------------
 -- LEVEL CHECK
@@ -970,7 +971,7 @@ local function bringAndModifyMobs(mobName, mobLockPos)
 end
 
 ------------------------------------------------------------------------
--- FARM LOOP (แก้ไขระบบวาร์ปเซฟ)
+-- FARM LOOP (แก้ไขระบบวาร์ปเซฟ - บังคับลำดับขั้นตอน)
 ------------------------------------------------------------------------
 local function startFarmLoop()
     if farmLoopConn then farmLoopConn:Disconnect() end
@@ -983,6 +984,12 @@ local function startFarmLoop()
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
         if not hrp or not hum then return end
 
+        -- เช็คสถานะการตาย: ถ้าเลือดเป็น 0 หรือกำลังรอเกิดใหม่ ให้หยุดทำงานอื่น
+        if hum.Health <= 0 then 
+            isResettingForSpawn = false -- เมื่อตายสนิทแล้ว ให้เคลียร์สถานะเตรียมเกิดใหม่
+            return 
+        end
+
         local water = workspace:FindFirstChild("Map") and workspace.Map:FindFirstChild("WaterBase-Plane")
         if water and hrp.Position.Y < (water.Position.Y + 20) then
             hrp.Velocity = Vector3.new(0, 60, 0)
@@ -993,6 +1000,7 @@ local function startFarmLoop()
         -- เกาะ 1: Bandit (เลเวล 1-9)
         ------------------------------------------------------------
         if level >= 1 and level <= 9 then
+            -- (ระบบเดิมของคุณ)
             local Q_POS = Vector3.new(1059.583, 16.459, 1547.783)
             local F_POS = Vector3.new(1196.068, 42.290, 1613.823)
             local L_POS = Vector3.new(1195.924, 16.739, 1613.705)
@@ -1029,23 +1037,32 @@ local function startFarmLoop()
             local SPAWN_POS = Vector3.new(-1334.883, 11.886, 496.108)
             local Q_POS = Vector3.new(-1602.307, 36.887, 152.540)
             
-            -- บังคับวาร์ปไปเซฟ (เพิ่มระบบรอและหน่วงเวลา)
+            -- ขั้นตอนที่ 1: วาร์ปไปเซฟให้จบก่อน
             if not hasSetSpawnThisSession then
-                startNoClip()
-                hrp.Velocity = Vector3.zero
-                hrp.CFrame = CFrame.new(SPAWN_POS) -- วาร์ปทันที
-                
-                -- รอจนกว่าพิกัดจะตรง (เพื่อกันการฆ่าตัวตายกลางอากาศ)
-                if (hrp.Position - SPAWN_POS).Magnitude < 10 then
-                    task.wait(0.5) -- รอโหลด
-                    game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("SetSpawnPoint")
-                    hasSetSpawnThisSession = true
-                    task.wait(1.5) -- หน่วงเวลาให้เซฟติดชัวร์ๆ ก่อนตาย
-                    hum.Health = 0 
+                if not isResettingForSpawn then
+                    startNoClip()
+                    local distToSpawn = (hrp.Position - SPAWN_POS).Magnitude
+                    
+                    if distToSpawn > 5 then
+                        -- กำลังเดินทางไปจุดเซฟ
+                        hrp.Velocity = (SPAWN_POS - hrp.Position).Unit * 150
+                        hrp.CFrame = CFrame.new(hrp.Position, SPAWN_POS)
+                    else
+                        -- ถึงจุดเซฟแล้ว
+                        hrp.Velocity = Vector3.zero
+                        hrp.CFrame = CFrame.new(SPAWN_POS)
+                        task.wait(0.5) -- รอให้นิ่ง
+                        game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("SetSpawnPoint")
+                        task.wait(1.0) -- รอเซฟชัวร์ๆ
+                        isResettingForSpawn = true -- เข้าสู่สถานะเตรียมฆ่าตัวตาย
+                        hasSetSpawnThisSession = true
+                        hum.Health = 0 -- ฆ่าตัวตาย
+                    end
                 end
-                return
+                return -- บังคับรอให้จบขั้นตอนนี้ ห้ามไปรับเควส
             end
 
+            -- ขั้นตอนที่ 2: หลังจากเกิดใหม่แล้ว ค่อยไปรับเควส
             local m_name, f_pos, l_pos, q_num
             if level <= 14 then
                 m_name = "Monkey"
@@ -1235,6 +1252,7 @@ btn.MouseButton1Click:Connect(function()
         startEffectRemover()
     else
         hasSetSpawnThisSession = false 
+        isResettingForSpawn = false -- เคลียร์สถานะ
         stopHold()
         stopDisableDialogue()
         stopFarmLoop()
