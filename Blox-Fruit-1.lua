@@ -762,7 +762,7 @@ local farmLoopConn
 local effectRemoverConn -- ระบบลบแสง
 
 ------------------------------------------------------------------------
--- EFFECT REMOVER (ลบแสงจ้า)
+-- EFFECT REMOVER (ลบแสงจ้าแบบครบถ้วน)
 ------------------------------------------------------------------------
 local function startEffectRemover()
     if effectRemoverConn then effectRemoverConn:Disconnect() end
@@ -774,10 +774,10 @@ local function startEffectRemover()
                 if v:IsA("PostEffect") or v.Name:find("Effect") then v:Destroy() end
             end
         end
-        local char = LP.Character
-        if char then
-            for _, v in ipairs(char:GetDescendants()) do
-                if v:IsA("Light") or v:IsA("ParticleEmitter") then v.Enabled = false end
+        -- ลบพาร์ทิเคิลที่ตัวเราและศัตรู (แก้แสงสีฟ้าแสบตา)
+        for _, v in ipairs(workspace:GetDescendants()) do
+            if v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Light") then
+                v.Enabled = false
             end
         end
     end)
@@ -913,7 +913,7 @@ local function stopNoClip()
 end
 
 ------------------------------------------------------------------------
--- BRING & MODIFY MONSTER (โครงสร้างตามที่คุณส่งมา)
+-- BRING & MODIFY MONSTER (ยึดตามต้นฉบับ 100%)
 ------------------------------------------------------------------------
 local function bringAndModifyMobs(mobName, mobLockPos)
     if sethiddenproperty then
@@ -934,7 +934,7 @@ local function bringAndModifyMobs(mobName, mobLockPos)
                 y.Humanoid.WalkSpeed = 0
                 y.Humanoid.JumpPower = 0
                 
-                -- ซ้ำเพื่อความมั่นใจตามโค้ดต้นฉบับ
+                -- ล็อคซ้ำตามโค้ดต้นฉบับของคุณ
                 yhrp.CFrame = yhrp.CFrame
                 yhrp.CanCollide = false
                 y.Humanoid.WalkSpeed = 0
@@ -945,7 +945,7 @@ local function bringAndModifyMobs(mobName, mobLockPos)
 end
 
 ------------------------------------------------------------------------
--- FARM LOOP (1-29) ครบระบบ Fly + SetSpawn
+-- FARM LOOP (1-29) ครบระบบ Fly + SetSpawn + Anti-Drown
 ------------------------------------------------------------------------
 local function startFarmLoop()
     if farmLoopConn then farmLoopConn:Disconnect() end
@@ -957,10 +957,10 @@ local function startFarmLoop()
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
         if not hrp then return end
 
-        -- กันจมน้ำ (WaterBase-Plane)
+        -- กันจมน้ำ (WaterBase-Plane) + ล็อคความสูงตอนบิน
         local water = workspace:FindFirstChild("Map") and workspace.Map:FindFirstChild("WaterBase-Plane")
-        if water and hrp.Position.Y < (water.Position.Y + 20) then
-            hrp.Velocity = Vector3.new(0, 60, 0)
+        if (water and hrp.Position.Y < (water.Position.Y + 20)) or hrp.Position.Y < 30 then
+            hrp.Velocity = Vector3.new(hrp.Velocity.X, 70, hrp.Velocity.Z)
             return
         end
 
@@ -1004,22 +1004,25 @@ local function startFarmLoop()
             local SPAWN_POS = Vector3.new(-1334.883, 11.886, 496.108)
             local Q_POS = Vector3.new(-1602.307, 36.887, 152.540)
             
-            -- บินไปเซฟจุดเกิดเกาะ Jungle (ระบบที่คุณต้องการ)
+            -- บินไปเซฟจุดเกิดเกาะ Jungle (รักษาความสูงพ้นน้ำ)
             if not SG("SpawnSet_Jungle", false) then
                 startNoClip()
-                local distS = (SPAWN_POS - hrp.Position).Magnitude
+                local flyAbove = Vector3.new(SPAWN_POS.X, 80, SPAWN_POS.Z)
+                local distS = (flyAbove - hrp.Position).Magnitude
                 if distS > 5 then
-                    hrp.Velocity = (SPAWN_POS - hrp.Position).Unit * 150
-                    hrp.CFrame = CFrame.new(hrp.Position, SPAWN_POS)
+                    hrp.Velocity = (flyAbove - hrp.Position).Unit * 150
+                    hrp.CFrame = CFrame.new(hrp.Position, flyAbove)
                 else
                     hrp.Velocity = Vector3.zero
+                    hrp.CFrame = CFrame.new(SPAWN_POS)
+                    task.wait(0.5)
                     game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("SetSpawnPoint")
                     SS("SpawnSet_Jungle", true)
                 end
                 return
             end
 
-            -- แยกมอน Monkey (10-14) หรือ Gorilla (15-29)
+            -- แยกมอน Monkey (10-14) หรือ Gorilla (15-29) ตามที่คุณระบุ
             local m_name, f_pos, l_pos, q_num
             if level <= 14 then
                 m_name = "Monkey"
@@ -1122,7 +1125,7 @@ RunService.Heartbeat:Connect(function()
 
                     task.spawn(function()
                         netRE:WaitForChild("RE/RegisterAttack"):FireServer(0.5)
-                        for b = 1, getgenv().UFO_Combat.BatchSize do
+                        for b = 1, getgenv().UFO_Combat.AttackPerStep do
                             netRE:WaitForChild("RE/RegisterHit"):FireServer(unpack({
                                 [1] = targetPart,
                                 [2] = {},
