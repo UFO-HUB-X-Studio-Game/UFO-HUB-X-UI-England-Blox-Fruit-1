@@ -950,7 +950,7 @@ local function bringAndModifyMobs(mobName, mobLockPos)
 end
 
 ------------------------------------------------------------------------
--- FARM LOOP (ต้นฉบับ 100% + การแยกเกาะเพื่อให้เพิ่มเองได้ง่าย)
+-- FARM LOOP (ต้นฉบับ 100%)
 ------------------------------------------------------------------------
 local function startFarmLoop()
     if farmLoopConn then farmLoopConn:Disconnect() end
@@ -971,10 +971,8 @@ local function startFarmLoop()
         end
 
         ------------------------------------------------------------
-        -- [[ ส่วนที่คุณสามารถเพิ่มเกาะใหม่ได้เอง ]]
-        ------------------------------------------------------------
-        
         -- เกาะ 1: Bandit (เลเวล 1-9)
+        ------------------------------------------------------------
         if level >= 1 and level <= 9 then
             local Q_POS = Vector3.new(1059.583, 16.459, 1547.783)
             local F_POS = Vector3.new(1196.068, 42.290, 1613.823)
@@ -1005,25 +1003,23 @@ local function startFarmLoop()
                 end
             end
 
+        ------------------------------------------------------------
         -- เกาะ 2: Jungle (เลเวล 10-29)
+        ------------------------------------------------------------
         elseif level >= 10 and level <= 29 then
             local SPAWN_POS = Vector3.new(-1334.883, 11.886, 496.108)
             local Q_POS = Vector3.new(-1602.307, 36.887, 152.540)
             
-            -- บังคับวาร์ปไปเซฟและฆ่าตัวตาย 1 ครั้งต่อการเปิดปิดสวิตช์
+            -- [จุดที่แก้ไข: วาร์ปไปเซฟเฉพาะตอนที่ยังไม่ได้เซฟใน Session นี้เท่านั้น]
             if not hasSetSpawnThisSession then
                 startNoClip()
-                local distS = (SPAWN_POS - hrp.Position).Magnitude
-                if distS > 5 then
-                    hrp.Velocity = (SPAWN_POS - hrp.Position).Unit * 150
-                    hrp.CFrame = CFrame.new(hrp.Position, SPAWN_POS)
-                else
-                    hrp.Velocity = Vector3.zero
-                    game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("SetSpawnPoint")
-                    hasSetSpawnThisSession = true -- ล็อคว่าทำแล้ว
-                    task.wait(0.1)
-                    hum.Health = 0 -- ฆ่าตัวตาย
-                end
+                hrp.Velocity = Vector3.zero
+                hrp.CFrame = CFrame.new(SPAWN_POS) -- วาร์ปทันที
+                task.wait(0.2)
+                game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("SetSpawnPoint")
+                hasSetSpawnThisSession = true
+                task.wait(0.1)
+                hum.Health = 0 -- รีเซ็ตตัว
                 return
             end
 
@@ -1065,9 +1061,6 @@ local function startFarmLoop()
                     bringAndModifyMobs(m_name, l_pos)
                 end
             end
-
-        -- [[ คุณสามารถเพิ่ม elseif level >= ... ต่อลงมาตรงนี้ได้เลย ]]
-
         end
     end)
 end
@@ -1219,9 +1212,7 @@ btn.MouseButton1Click:Connect(function()
         startFarmLoop()
         startEffectRemover()
     else
-        -- รีเซ็ตสถานะการเซฟ เมื่อปิดสวิตช์
         hasSetSpawnThisSession = false 
-        
         stopHold()
         stopDisableDialogue()
         stopFarmLoop()
