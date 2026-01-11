@@ -705,10 +705,10 @@ local LP = Players.LocalPlayer
 local netRE = ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Net")
 
 ------------------------------------------------------------------------
--- SESSION CHECK (ระบบเช็คการปิดเปิดสวิตช์)
+-- SESSION CHECK
 ------------------------------------------------------------------------
 local hasSetSpawnThisSession = false 
-local isResettingForSpawn = false -- ตัวแปรใหม่: เช็คว่ากำลังอยู่ในขั้นตอนรีเซ็ตจุดเกิดหรือไม่
+local isResettingForSpawn = false 
 
 ------------------------------------------------------------------------
 -- LEVEL CHECK
@@ -769,7 +769,7 @@ local farmLoopConn
 local effectRemoverConn
 
 ------------------------------------------------------------------------
--- EFFECT REMOVER & RESTORE (แก้ไขให้กลับมา 100%)
+-- EFFECT REMOVER & RESTORE
 ------------------------------------------------------------------------
 local function startEffectRemover()
     if effectRemoverConn then effectRemoverConn:Disconnect() end
@@ -811,7 +811,7 @@ local function restoreEffects()
 end
 
 ------------------------------------------------------------------------
--- DISABLE DIALOGUE (ต้นฉบับ 100%)
+-- DISABLE DIALOGUE
 ------------------------------------------------------------------------
 local function setDialogueVisible(state)
     local pg = LP:FindFirstChild("PlayerGui")
@@ -834,7 +834,7 @@ local function stopDisableDialogue()
 end
 
 ------------------------------------------------------------------------
--- COMBAT PRIORITY (ต้นฉบับ 100%)
+-- COMBAT PRIORITY
 ------------------------------------------------------------------------
 local COMBAT_STYLES = {
     "Sanguine Art","Godhuman","Dragon Talon","Electric Claw",
@@ -870,7 +870,7 @@ local function stopHold()
 end
 
 ------------------------------------------------------------------------
--- REDEEM ONCE (ต้นฉบับ 100%)
+-- REDEEM ONCE
 ------------------------------------------------------------------------
 local CODES = {
     "LIGHTNINGABUSE","KITT_RESET","SUB2OFFICIALNOOBIE","BIGNEWS","BLUXXY",
@@ -892,7 +892,7 @@ local function redeemOnce()
 end
 
 ------------------------------------------------------------------------
--- QUEST HELPERS & NOCLIP (ต้นฉบับ 100%)
+-- QUEST HELPERS & NOCLIP
 ------------------------------------------------------------------------
 local function hasQuest()
     local pg = LP:FindFirstChild("PlayerGui")
@@ -940,7 +940,7 @@ local function stopNoClip()
 end
 
 ------------------------------------------------------------------------
--- BRING & MODIFY MONSTER (ต้นฉบับ 100%)
+-- BRING & MODIFY MONSTER
 ------------------------------------------------------------------------
 local function bringAndModifyMobs(mobName, mobLockPos)
     if sethiddenproperty then
@@ -960,18 +960,13 @@ local function bringAndModifyMobs(mobName, mobLockPos)
                 yhrp.CanCollide = false
                 y.Humanoid.WalkSpeed = 0
                 y.Humanoid.JumpPower = 0
-                
-                yhrp.CFrame = yhrp.CFrame
-                yhrp.CanCollide = false
-                y.Humanoid.WalkSpeed = 0
-                y.Humanoid.JumpPower = 0
             end
         end
     end
 end
 
 ------------------------------------------------------------------------
--- FARM LOOP (แก้ไขระบบวาร์ปเซฟ - บังคับลำดับขั้นตอน)
+-- FARM LOOP (แก้ไขระบบวาร์ปเซฟ - วาร์ปเท่านั้น)
 ------------------------------------------------------------------------
 local function startFarmLoop()
     if farmLoopConn then farmLoopConn:Disconnect() end
@@ -984,9 +979,8 @@ local function startFarmLoop()
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
         if not hrp or not hum then return end
 
-        -- เช็คสถานะการตาย: ถ้าเลือดเป็น 0 หรือกำลังรอเกิดใหม่ ให้หยุดทำงานอื่น
         if hum.Health <= 0 then 
-            isResettingForSpawn = false -- เมื่อตายสนิทแล้ว ให้เคลียร์สถานะเตรียมเกิดใหม่
+            isResettingForSpawn = false 
             return 
         end
 
@@ -1000,7 +994,6 @@ local function startFarmLoop()
         -- เกาะ 1: Bandit (เลเวล 1-9)
         ------------------------------------------------------------
         if level >= 1 and level <= 9 then
-            -- (ระบบเดิมของคุณ)
             local Q_POS = Vector3.new(1059.583, 16.459, 1547.783)
             local F_POS = Vector3.new(1196.068, 42.290, 1613.823)
             local L_POS = Vector3.new(1195.924, 16.739, 1613.705)
@@ -1037,32 +1030,25 @@ local function startFarmLoop()
             local SPAWN_POS = Vector3.new(-1334.883, 11.886, 496.108)
             local Q_POS = Vector3.new(-1602.307, 36.887, 152.540)
             
-            -- ขั้นตอนที่ 1: วาร์ปไปเซฟให้จบก่อน
+            -- บังคับวาร์ปไปเซฟ 100%
             if not hasSetSpawnThisSession then
                 if not isResettingForSpawn then
                     startNoClip()
-                    local distToSpawn = (hrp.Position - SPAWN_POS).Magnitude
+                    -- วาร์ปทันที (Direct Warp)
+                    hrp.CFrame = CFrame.new(SPAWN_POS) 
+                    hrp.Velocity = Vector3.zero -- หยุดแรงส่ง
                     
-                    if distToSpawn > 5 then
-                        -- กำลังเดินทางไปจุดเซฟ
-                        hrp.Velocity = (SPAWN_POS - hrp.Position).Unit * 150
-                        hrp.CFrame = CFrame.new(hrp.Position, SPAWN_POS)
-                    else
-                        -- ถึงจุดเซฟแล้ว
-                        hrp.Velocity = Vector3.zero
-                        hrp.CFrame = CFrame.new(SPAWN_POS)
-                        task.wait(0.5) -- รอให้นิ่ง
-                        game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("SetSpawnPoint")
-                        task.wait(1.0) -- รอเซฟชัวร์ๆ
-                        isResettingForSpawn = true -- เข้าสู่สถานะเตรียมฆ่าตัวตาย
-                        hasSetSpawnThisSession = true
-                        hum.Health = 0 -- ฆ่าตัวตาย
-                    end
+                    task.wait(0.3) -- รอชิ้นส่วนตัวละครเข้าที่
+                    game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("SetSpawnPoint")
+                    
+                    task.wait(0.7) -- รอ Server รับค่า
+                    isResettingForSpawn = true 
+                    hasSetSpawnThisSession = true
+                    hum.Health = 0 -- ฆ่าตัวตายทันที
                 end
-                return -- บังคับรอให้จบขั้นตอนนี้ ห้ามไปรับเควส
+                return 
             end
 
-            -- ขั้นตอนที่ 2: หลังจากเกิดใหม่แล้ว ค่อยไปรับเควส
             local m_name, f_pos, l_pos, q_num
             if level <= 14 then
                 m_name = "Monkey"
@@ -1110,7 +1096,7 @@ local function stopFarmLoop()
 end
 
 ------------------------------------------------------------------------
--- SSS1 CORE (ต้นฉบับ 100%)
+-- SSS1 CORE
 ------------------------------------------------------------------------
 getgenv().UFO_Data = {
     CurrentKey = "6038e23a",
@@ -1187,7 +1173,7 @@ RunService.Stepped:Connect(function()
 end)
 
 ------------------------------------------------------------------------
--- UI GENERATION (ต้นฉบับ 100%)
+-- UI GENERATION
 ------------------------------------------------------------------------
 local layout = scroll:FindFirstChildOfClass("UIListLayout") or Instance.new("UIListLayout",scroll)
 layout.Padding = UDim.new(0,12)
@@ -1252,11 +1238,11 @@ btn.MouseButton1Click:Connect(function()
         startEffectRemover()
     else
         hasSetSpawnThisSession = false 
-        isResettingForSpawn = false -- เคลียร์สถานะ
+        isResettingForSpawn = false 
         stopHold()
         stopDisableDialogue()
         stopFarmLoop()
-        restoreEffects() -- คืนค่า 100%
+        restoreEffects() 
         setDialogueVisible(true)
     end
 end)
