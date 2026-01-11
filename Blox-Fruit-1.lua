@@ -902,7 +902,13 @@ local function hasQuest()
     return false
 end
 
--- ใหม่: ยกเลิกเควสเก่าเมื่อเลเวลถึงกำหนด
+-- ใหม่: ยกเลิกภารกิจปัจจุบันทันที (ใช้ตอนเปิดสวิตช์ครั้งแรก หรือเลเวลเกิน)
+local function forceAbandonQuest()
+    pcall(function()
+        game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("AbandonQuest")
+    end)
+end
+
 local function checkAndAbandonQuest(currentLevel)
     local pg = LP:FindFirstChild("PlayerGui")
     local main = pg and pg:FindFirstChild("Main")
@@ -910,9 +916,8 @@ local function checkAndAbandonQuest(currentLevel)
     
     if questGui and questGui.Visible then
         local questName = questGui.Container.QuestTitle.Title.Text
-        -- ถ้าเลเวล 10+ แต่ยังถือเควส Bandit (เลเวล 1) ให้ยกเลิก
         if currentLevel >= 10 and questName:find("Bandit") then
-            game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("AbandonQuest")
+            forceAbandonQuest()
         end
     end
 end
@@ -1005,7 +1010,6 @@ local function startFarmLoop()
             return
         end
 
-        -- ตรวจสอบและยกเลิกภารกิจที่เลเวลไม่ตรง
         checkAndAbandonQuest(level)
 
         ------------------------------------------------------------
@@ -1050,15 +1054,15 @@ local function startFarmLoop()
             
             if not hasSetSpawnThisSession then
                 if not isResettingForSpawn then
-                    isResettingForSpawn = true -- ล็อกสถานะทันทีกัน Loop ซ้อน
+                    isResettingForSpawn = true 
                     startNoClip()
                     hrp.CFrame = CFrame.new(SPAWN_POS) 
                     hrp.Velocity = Vector3.zero 
                     
-                    task.wait(0.5) -- รอให้ตัวละครนิ่ง
+                    task.wait(0.5)
                     game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("SetSpawnPoint")
                     
-                    task.wait(2.0) -- [แก้ไข] เพิ่มเวลารอให้ระบบเซฟทันก่อนฆ่าตัวตาย
+                    task.wait(3.0) -- [ปรับปรุง] เพิ่มเป็น 3 วินาทีตามที่ขอ เพื่อให้เซฟติดแน่นอน 100%
                     hasSetSpawnThisSession = true
                     hum.Health = 0 
                 end
@@ -1246,6 +1250,9 @@ btn.MouseButton1Click:Connect(function()
     getgenv().UFO_Combat.Enabled = ENABLED 
 
     if ENABLED then
+        -- [ปรับปรุง] ทุกครั้งที่เปิดสวิตช์ใหม่ ให้ยกเลิกเควสเก่าทิ้งเพื่อเริ่มใหม่ตามเลเวล
+        forceAbandonQuest() 
+        
         redeemOnce()
         equipCombat()
         startHold()
