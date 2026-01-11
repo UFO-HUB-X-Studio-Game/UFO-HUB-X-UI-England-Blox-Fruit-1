@@ -701,7 +701,6 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
-local Lighting = game:GetService("Lighting")
 local LP = Players.LocalPlayer
 local netRE = ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Net")
 
@@ -768,52 +767,25 @@ local dialogueConn
 local noclipConn
 local farmLoopConn 
 local effectRemoverConn
-local effectAddedConn
 
 ------------------------------------------------------------------------
--- FULL EFFECT REMOVER (ปิด 100% ทั้ง MAP)
+-- EFFECT REMOVER & RESTORE
 ------------------------------------------------------------------------
-local function toggleEffect(obj, state)
-    if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Light") or obj:IsA("SelectionBox") or obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") or obj:IsA("Explosion") then
-        obj.Enabled = state
-    elseif obj:IsA("PostEffect") or obj:IsA("BloomEffect") or obj:IsA("BlurEffect") or obj:IsA("SunRaysEffect") then
-        obj.Enabled = state
-    end
-end
-
 local function startEffectRemover()
     if effectRemoverConn then effectRemoverConn:Disconnect() end
-    if effectAddedConn then effectAddedConn:Disconnect() end
-
-    -- ปิดแสงสว่างแมพ
-    Lighting.Brightness = 0
-    Lighting.GlobalShadows = false
-    Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
-
-    -- ไล่ปิดของที่มีอยู่แล้วทั้งแมพ 100%
-    for _, v in ipairs(game:GetDescendants()) do
-        toggleEffect(v, false)
-    end
-
-    -- ดักจับของใหม่ที่เกิดมา (เช่น เอฟเฟคเลเวลอัป)
-    effectAddedConn = game.DescendantAdded:Connect(function(v)
-        if ENABLED then toggleEffect(v, false) end
-    end)
-
-    -- เคลียร์ UI ขาว และ UI แจ้งเตือน
     effectRemoverConn = RunService.Heartbeat:Connect(function()
         if not ENABLED then return end
-        local pg = LP:FindFirstChild("PlayerGui")
-        if pg then
-            local main = pg:FindFirstChild("Main")
-            if main then
-                if main:FindFirstChild("Notifications") then main.Notifications.Visible = false end
-                if main:FindFirstChild("LevelUp") then main.LevelUp.Visible = false end
+        local cam = workspace.CurrentCamera
+        if cam then
+            for _, v in ipairs(cam:GetChildren()) do
+                if v:IsA("PostEffect") or v.Name:find("Effect") then v.Enabled = false end
             end
-            -- ปิด ScreenGui ที่มีคำว่า Flash หรือ White
-            for _, gui in ipairs(pg:GetChildren()) do
-                if gui:IsA("ScreenGui") and (gui.Name:find("Flash") or gui.Name:find("White")) then
-                    gui.Enabled = false
+        end
+        local char = LP.Character
+        if char then
+            for _, v in ipairs(char:GetDescendants()) do
+                if v:IsA("Light") or v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("SelectionBox") then 
+                    v.Enabled = false 
                 end
             end
         end
@@ -822,21 +794,19 @@ end
 
 local function restoreEffects()
     if effectRemoverConn then effectRemoverConn:Disconnect() effectRemoverConn = nil end
-    if effectAddedConn then effectAddedConn:Disconnect() effectAddedConn = nil end
-
-    -- คืนค่าแสง
-    Lighting.Brightness = 2
-    Lighting.GlobalShadows = true
-
-    -- คืนค่าเอฟเฟคทั้งแมพ
-    for _, v in ipairs(game:GetDescendants()) do
-        toggleEffect(v, true)
+    local cam = workspace.CurrentCamera
+    if cam then
+        for _, v in ipairs(cam:GetChildren()) do
+            if v:IsA("PostEffect") or v.Name:find("Effect") then v.Enabled = true end
+        end
     end
-
-    local pg = LP:FindFirstChild("PlayerGui")
-    if pg then
-        local main = pg:FindFirstChild("Main")
-        if main and main:FindFirstChild("Notifications") then main.Notifications.Visible = true end
+    local char = LP.Character
+    if char then
+        for _, v in ipairs(char:GetDescendants()) do
+            if v:IsA("Light") or v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("SelectionBox") then 
+                v.Enabled = true 
+            end
+        end
     end
 end
 
@@ -996,7 +966,7 @@ local function bringAndModifyMobs(mobName, mobLockPos)
 end
 
 ------------------------------------------------------------------------
--- FARM LOOP
+-- FARM LOOP (แก้ไขระบบวาร์ปเซฟ - วาร์ปเท่านั้น)
 ------------------------------------------------------------------------
 local function startFarmLoop()
     if farmLoopConn then farmLoopConn:Disconnect() end
@@ -1020,6 +990,9 @@ local function startFarmLoop()
             return
         end
 
+        ------------------------------------------------------------
+        -- เกาะ 1: Bandit (เลเวล 1-9)
+        ------------------------------------------------------------
         if level >= 1 and level <= 9 then
             local Q_POS = Vector3.new(1059.583, 16.459, 1547.783)
             local F_POS = Vector3.new(1196.068, 42.290, 1613.823)
@@ -1050,21 +1023,28 @@ local function startFarmLoop()
                 end
             end
 
+        ------------------------------------------------------------
+        -- เกาะ 2: Jungle (เลเวล 10-29)
+        ------------------------------------------------------------
         elseif level >= 10 and level <= 29 then
             local SPAWN_POS = Vector3.new(-1334.883, 11.886, 496.108)
             local Q_POS = Vector3.new(-1602.307, 36.887, 152.540)
             
+            -- บังคับวาร์ปไปเซฟ 100%
             if not hasSetSpawnThisSession then
                 if not isResettingForSpawn then
                     startNoClip()
+                    -- วาร์ปทันที (Direct Warp)
                     hrp.CFrame = CFrame.new(SPAWN_POS) 
-                    hrp.Velocity = Vector3.zero 
-                    task.wait(0.3) 
+                    hrp.Velocity = Vector3.zero -- หยุดแรงส่ง
+                    
+                    task.wait(0.3) -- รอชิ้นส่วนตัวละครเข้าที่
                     game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("SetSpawnPoint")
-                    task.wait(0.7) 
+                    
+                    task.wait(0.7) -- รอ Server รับค่า
                     isResettingForSpawn = true 
                     hasSetSpawnThisSession = true
-                    hum.Health = 0 
+                    hum.Health = 0 -- ฆ่าตัวตายทันที
                 end
                 return 
             end
@@ -1255,14 +1235,14 @@ btn.MouseButton1Click:Connect(function()
         startHold()
         startDisableDialogue()
         startFarmLoop()
-        startEffectRemover() -- เปิดแล้วปิดเอฟเฟคทันที
+        startEffectRemover()
     else
         hasSetSpawnThisSession = false 
         isResettingForSpawn = false 
         stopHold()
         stopDisableDialogue()
         stopFarmLoop()
-        restoreEffects() -- ปิดแล้วทุกอย่างกลับมาเหมือนเดิม
+        restoreEffects() 
         setDialogueVisible(true)
     end
 end)
