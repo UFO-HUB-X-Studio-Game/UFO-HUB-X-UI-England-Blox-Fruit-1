@@ -842,15 +842,8 @@ local function redeemOnce()
 end
 
 ------------------------------------------------------------------------
--- MOVEMENT, QUEST & BRING MOB LOGIC
+-- QUEST HELPERS
 ------------------------------------------------------------------------
--- ตำแหน่ง NPC รับเควส
-local QUEST_POS = Vector3.new(1059.583,16.459,1547.783)
--- ตำแหน่งที่ผู้เล่นจะยืนฟาร์ม (เหนือหัวมอน) **จุดที่จะให้ลอยค้าง**
-local FARM_POS  = Vector3.new(1196.068, 42.290, 1613.823)
--- ตำแหน่งที่จะดึงมอนมารวมกัน
-local MOB_LOCK_POS = Vector3.new(1195.924, 16.739, 1613.705)
-
 local function hasQuest()
     local pg = LP:FindFirstChild("PlayerGui")
     local main = pg and pg:FindFirstChild("Main")
@@ -896,83 +889,135 @@ local function stopNoClip()
     if hum then hum:ChangeState(Enum.HumanoidStateType.GettingUp) end
 end
 
-local function takeQuest()
-    local args = {"StartQuest", "BanditQuest1", 1}
-    ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer(unpack(args))
-end
-
--- [[ ระบบดึงมอนสเตอร์ & ปรับแต่ง ]]
-local function bringAndModifyMobs()
+------------------------------------------------------------------------
+-- BRING & MODIFY MONSTER (FULL STATUS)
+------------------------------------------------------------------------
+local function bringAndModifyMobs(mobName, mobLockPos)
     if sethiddenproperty then
-        sethiddenproperty(LP, "SimulationRadius", math.huge)
+        sethiddenproperty(game.Players.LocalPlayer, "SimulationRadius", math.huge)
     end
 
     local enemies = workspace:FindFirstChild("Enemies")
     if not enemies then return end
 
-    for _, v in ipairs(enemies:GetChildren()) do
-        if v.Name == "Bandit" and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
-            local hrp = v:FindFirstChild("HumanoidRootPart")
-            if hrp then
-                -- 1. ดึงมาตำแหน่งที่กำหนด
-                hrp.CFrame = CFrame.new(MOB_LOCK_POS)
+    for _, y in ipairs(enemies:GetChildren()) do
+        if y.Name == mobName and y:FindFirstChild("Humanoid") and y.Humanoid.Health > 0 then
+            local yhrp = y:FindFirstChild("HumanoidRootPart")
+            if yhrp then
+                -- ดึงมอนสเตอร์มาและล็อคสถานะตามความต้องการ
+                yhrp.CFrame = CFrame.new(mobLockPos)
+                yhrp.Size = Vector3.new(60, 60, 60)
+                yhrp.Transparency = 1
+                yhrp.CanCollide = false
+                y.Humanoid.WalkSpeed = 0
+                y.Humanoid.JumpPower = 0
                 
-                -- 2. ปรับแต่งสภาพ
-                hrp.Size = Vector3.new(60, 60, 60)
-                hrp.Transparency = 1
-                hrp.CanCollide = false
-                
-                v.Humanoid.WalkSpeed = 0
-                v.Humanoid.JumpPower = 0
-                
-                if v:FindFirstChild("Head") then v.Head.CanCollide = false end
+                -- ซ้ำเพื่อความมั่นใจตามโค้ดต้นฉบับ
+                yhrp.CFrame = yhrp.CFrame
+                yhrp.CanCollide = false
+                y.Humanoid.WalkSpeed = 0
+                y.Humanoid.JumpPower = 0
             end
         end
     end
 end
 
--- [[ Loop หลักของการทำงาน ]]
+------------------------------------------------------------------------
+-- FARM LOOP (ISLAND 1 & 2)
+------------------------------------------------------------------------
 local function startFarmLoop()
     if farmLoopConn then farmLoopConn:Disconnect() end
     
     farmLoopConn = RunService.Heartbeat:Connect(function()
         if not ENABLED then return end
-        if getLevel() > 9 then return end 
-        
+        local level = getLevel()
         local char = LP.Character
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
         if not hrp then return end
 
-        if not hasQuest() then
-            -- [ ไม่มีเควส: บินไปรับเควส ]
-            startNoClip()
-            local dist = (QUEST_POS - hrp.Position).Magnitude
-            if dist > 3 then
-                hrp.Velocity = (QUEST_POS - hrp.Position).Unit * 125
-                hrp.CFrame = CFrame.new(hrp.Position, QUEST_POS)
+        if level >= 1 and level <= 9 then
+            ------------------------------------------------------------
+            -- เกาะที่ 1: Bandit
+            ------------------------------------------------------------
+            local Q_POS = Vector3.new(1059.583, 16.459, 1547.783)
+            local F_POS = Vector3.new(1196.068, 42.290, 1613.823)
+            local L_POS = Vector3.new(1195.924, 16.739, 1613.705)
+
+            if not hasQuest() then
+                startNoClip()
+                local dist = (Q_POS - hrp.Position).Magnitude
+                if dist > 3 then
+                    hrp.Velocity = (Q_POS - hrp.Position).Unit * 125
+                    hrp.CFrame = CFrame.new(hrp.Position, Q_POS)
+                else
+                    hrp.Velocity = Vector3.zero
+                    stopNoClip() 
+                    local args = {"StartQuest", "BanditQuest1", 1}
+                    game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer(unpack(args))
+                end
             else
-                hrp.Velocity = Vector3.zero
-                stopNoClip() 
-                takeQuest()
+                startNoClip()
+                local dist = (F_POS - hrp.Position).Magnitude
+                if dist > 3 then
+                    hrp.Velocity = (F_POS - hrp.Position).Unit * 125
+                    hrp.CFrame = CFrame.new(hrp.Position, F_POS)
+                else
+                    hrp.Velocity = Vector3.zero
+                    hrp.AssemblyLinearVelocity = Vector3.zero 
+                    hrp.CFrame = CFrame.new(F_POS) 
+                    bringAndModifyMobs("Bandit", L_POS)
+                end
             end
-        else
-            -- [ มีเควสแล้ว: ไปจุดฟาร์ม & ล็อคตัว ]
-            startNoClip()
-            local dist = (FARM_POS - hrp.Position).Magnitude
-            
-            if dist > 3 then
-                -- กำลังบินไป
-                hrp.Velocity = (FARM_POS - hrp.Position).Unit * 125
-                hrp.CFrame = CFrame.new(hrp.Position, FARM_POS)
+
+        elseif level >= 10 and level <= 14 then
+            ------------------------------------------------------------
+            -- เกาะที่ 2: Monkey (พิกัดตามที่คุณให้มา)
+            ------------------------------------------------------------
+            local SPAWN_POS = Vector3.new(-1334.883, 11.886, 496.108)
+            local Q_POS = Vector3.new(-1602.307, 36.887, 152.540)
+            local F_POS = Vector3.new(-1699.420, 47.266, -75.152) -- บินไปฟาร์มลอยฟ้า
+            local L_POS = Vector3.new(-1700.433, 22.887, -77.080) -- ดึงมอนมาตรงนี้
+
+            -- 1. เซฟจุดเกิดก่อน (ถ้ายังไม่ได้เซฟ)
+            if not SG("SpawnSet_Jungle", false) then
+                startNoClip()
+                local distS = (SPAWN_POS - hrp.Position).Magnitude
+                if distS > 5 then
+                    hrp.Velocity = (SPAWN_POS - hrp.Position).Unit * 150
+                    hrp.CFrame = CFrame.new(hrp.Position, SPAWN_POS)
+                else
+                    local args = {"SetSpawnPoint"}
+                    game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer(unpack(args))
+                    SS("SpawnSet_Jungle", true)
+                end
+                return
+            end
+
+            -- 2. รับภารกิจ & ฟาร์ม
+            if not hasQuest() then
+                startNoClip()
+                local distQ = (Q_POS - hrp.Position).Magnitude
+                if distQ > 5 then
+                    hrp.Velocity = (Q_POS - hrp.Position).Unit * 150
+                    hrp.CFrame = CFrame.new(hrp.Position, Q_POS)
+                else
+                    hrp.Velocity = Vector3.zero
+                    stopNoClip()
+                    local args = {"StartQuest", "JungleQuest", 1}
+                    game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer(unpack(args))
+                end
             else
-                -- [[ ถึงแล้ว: ล็อคตัวผู้เล่น (Floating Lock) ]]
-                -- สั่งให้ตำแหน่งเท่ากับจุด FARM_POS ตลอดเวลา (Freeze)
-                hrp.Velocity = Vector3.zero
-                hrp.AssemblyLinearVelocity = Vector3.zero 
-                hrp.CFrame = CFrame.new(FARM_POS) 
-                
-                -- สั่งดึงมอนสเตอร์
-                bringAndModifyMobs()
+                startNoClip()
+                local distF = (F_POS - hrp.Position).Magnitude
+                if distF > 5 then
+                    hrp.Velocity = (F_POS - hrp.Position).Unit * 150
+                    hrp.CFrame = CFrame.new(hrp.Position, F_POS)
+                else
+                    hrp.Velocity = Vector3.zero
+                    hrp.AssemblyLinearVelocity = Vector3.zero 
+                    hrp.CFrame = CFrame.new(F_POS) 
+                    bringAndModifyMobs("Monkey", L_POS)
+                end
             end
         end
     end)
@@ -1090,7 +1135,7 @@ txt.Font=Enum.Font.GothamBold
 txt.TextSize=13
 txt.TextColor3=THEME.WHITE
 txt.TextXAlignment=Enum.TextXAlignment.Left
-txt.Text="Auto Farm Level"
+txt.Text="Auto Farm Level 1-14"
 
 local sw = Instance.new("Frame",row)
 sw.AnchorPoint=Vector2.new(1,0.5)
