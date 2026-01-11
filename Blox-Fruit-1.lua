@@ -759,68 +759,83 @@ local function tween(o,p,d)
 end
 
 ------------------------------------------------------------------------
--- EFFECT REMOVER & UI CLEANER (แก้ไขเพื่อลบเอฟเฟคในคลิป)
+-- EFFECT REMOVER & UI CLEANER (แก้ไขพิเศษลบหน้าจอขาวเลเวลอัป)
 ------------------------------------------------------------------------
 local function startEffectRemover()
     if effectRemoverConn then effectRemoverConn:Disconnect() end
     effectRemoverConn = RunService.Heartbeat:Connect(function()
         if not ENABLED then return end
         
-        -- 1. ลบเอฟเฟคในกล้อง (Post Processing)
+        -- 1. ลบ PostProcessing ใน Camera (แสงจ้า/Blur)
         local cam = workspace.CurrentCamera
         if cam then
             for _, v in ipairs(cam:GetChildren()) do
-                if v:IsA("PostEffect") or v.Name:find("Effect") then v.Enabled = false end
-            end
-        end
-
-        -- 2. ลบเอฟเฟคที่เกิดกับตัวละคร (แสงเลเวลอัป)
-        local char = LP.Character
-        if char then
-            for _, v in ipairs(char:GetDescendants()) do
-                if v:IsA("Light") or v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("SelectionBox") then 
+                if v:IsA("PostEffect") or v:IsA("Bloom") or v:IsA("SunRays") or v:IsA("ColorCorrectionEffect") then 
                     v.Enabled = false 
                 end
             end
         end
 
-        -- 3. ลบ UI แจ้งเตือนกลางจอ (เลเวลอัป/เงิน)
-        local pg = LP:FindFirstChild("PlayerGui")
-        if pg then
-            local main = pg:FindFirstChild("Main")
-            if main then
-                -- ปิด Notification และเอฟเฟคเด้งๆ กลางจอ
-                local notif = main:FindFirstChild("Notifications")
-                if notif then notif.Visible = false end
-                
-                local levelMsg = main:FindFirstChild("LevelUpMsg") -- บางเวอร์ชันใช้ชื่อนี้
-                if levelMsg then levelMsg.Visible = false end
-            end
-        end
-        
-        -- 4. จัดการเอฟเฟคใน Folder พิเศษ (กันมันเกิดใหม่)
-        for _, v in ipairs(ReplicatedStorage:GetChildren()) do
-            if v.Name:find("Effect") and v:IsA("Folder") then
-                for _, ef in ipairs(v:GetDescendants()) do
-                    if ef:IsA("ParticleEmitter") or ef:IsA("Trail") then ef.Enabled = false end
+        -- 2. ลบเอฟเฟคเลเวลอัปที่ตัวละคร (Particle/Light)
+        local char = LP.Character
+        if char then
+            for _, v in ipairs(char:GetDescendants()) do
+                if v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Light") or v:IsA("SelectionBox") then 
+                    v.Enabled = false 
                 end
             end
         end
+
+        -- 3. ลบ UI หน้าจอขาวและแจ้งเตือน (ลบต้นเหตุในคลิป)
+        local pg = LP:FindFirstChild("PlayerGui")
+        if pg then
+            -- ปิดหน้าจอขาวแจ้งเลเวลอัป
+            local main = pg:FindFirstChild("Main")
+            if main then
+                -- ปิด Notification ทั้งหมด
+                if main:FindFirstChild("Notifications") then main.Notifications.Visible = false end
+                -- ปิดเอฟเฟคแสงขาวที่มักอยู่ใน UI
+                for _, v in ipairs(main:GetDescendants()) do
+                    if (v:IsA("Frame") or v:IsA("ImageLabel")) and (v.Name:find("White") or v.Name:find("Flash") or v.Name:find("Light")) then
+                        v.Visible = false
+                    end
+                end
+            end
+            
+            -- ปิด UI เลเวลอัปที่เด้งแยกออกมา
+            for _, gui in ipairs(pg:GetChildren()) do
+                if gui:IsA("ScreenGui") and (gui.Name:find("Level") or gui.Name:find("Notice")) then
+                    gui.Enabled = false
+                end
+            end
+        end
+        
+        -- 4. บังคับปิด Lighting พื้นฐาน (ลดความจ้า)
+        game:GetService("Lighting").Brightness = 1
+        game:GetService("Lighting").GlobalShadows = false
     end)
 end
 
 local function restoreEffects()
     if effectRemoverConn then effectRemoverConn:Disconnect() effectRemoverConn = nil end
     
-    -- คืนค่า UI
+    -- คืนค่า UI แจ้งเตือน
     local pg = LP:FindFirstChild("PlayerGui")
     if pg then
         local main = pg:FindFirstChild("Main")
         if main then
-            local notif = main:FindFirstChild("Notifications")
-            if notif then notif.Visible = true end
+            if main:FindFirstChild("Notifications") then main.Notifications.Visible = true end
+        end
+        for _, gui in ipairs(pg:GetChildren()) do
+            if gui:IsA("ScreenGui") and (gui.Name:find("Level") or gui.Name:find("Notice")) then
+                gui.Enabled = true
+            end
         end
     end
+    
+    -- คืนค่า Lighting
+    game:GetService("Lighting").Brightness = 2
+    game:GetService("Lighting").GlobalShadows = true
 end
 
 ------------------------------------------------------------------------
