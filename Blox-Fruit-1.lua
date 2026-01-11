@@ -733,8 +733,6 @@ local function SS(k,v)
     pcall(function() SAVE.set(SCOPE.."/"..k,v) end)
 end
 
-local ENABLED = SG("Enabled", false)
-
 ------------------------------------------------------------------------
 -- THEME & UI UTILS
 ------------------------------------------------------------------------
@@ -762,18 +760,24 @@ local function tween(o,p,d)
 end
 
 ------------------------------------------------------------------------
--- [NEW] EFFECT REMOVER SYSTEM (แทรกเข้าไปใหม่)
+-- STATE & CONNECTIONS
 ------------------------------------------------------------------------
+local ENABLED = SG("Enabled", false)
+local holdConn
+local dialogueConn
+local noclipConn
+local farmLoopConn 
 local effectRemoverConn
 local effectAddedConn
 
-local function cleanObj(v)
-    if not ENABLED then return end
-    if v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Light") or v:IsA("SelectionBox") or v:IsA("PostEffect") or v:IsA("Bloom") or v:IsA("BlurEffect") then
-        v.Enabled = false
-    end
-    if (v:IsA("Frame") or v:IsA("ImageLabel")) and (v.Name:lower():find("flash") or v.Name:lower():find("white") or v.Name:lower():find("light")) then
-        v.Visible = false
+------------------------------------------------------------------------
+-- FULL EFFECT REMOVER (ปิด 100% ทั้ง MAP)
+------------------------------------------------------------------------
+local function toggleEffect(obj, state)
+    if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Light") or obj:IsA("SelectionBox") or obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") or obj:IsA("Explosion") then
+        obj.Enabled = state
+    elseif obj:IsA("PostEffect") or obj:IsA("BloomEffect") or obj:IsA("BlurEffect") or obj:IsA("SunRaysEffect") then
+        obj.Enabled = state
     end
 end
 
@@ -781,26 +785,36 @@ local function startEffectRemover()
     if effectRemoverConn then effectRemoverConn:Disconnect() end
     if effectAddedConn then effectAddedConn:Disconnect() end
 
+    -- ปิดแสงสว่างแมพ
     Lighting.Brightness = 0
     Lighting.GlobalShadows = false
+    Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
 
-    for _, v in ipairs(game:GetDescendants()) do cleanObj(v) end
-    effectAddedConn = game.DescendantAdded:Connect(cleanObj)
+    -- ไล่ปิดของที่มีอยู่แล้วทั้งแมพ 100%
+    for _, v in ipairs(game:GetDescendants()) do
+        toggleEffect(v, false)
+    end
 
+    -- ดักจับของใหม่ที่เกิดมา (เช่น เอฟเฟคเลเวลอัป)
+    effectAddedConn = game.DescendantAdded:Connect(function(v)
+        if ENABLED then toggleEffect(v, false) end
+    end)
+
+    -- เคลียร์ UI ขาว และ UI แจ้งเตือน
     effectRemoverConn = RunService.Heartbeat:Connect(function()
         if not ENABLED then return end
-        local cam = workspace.CurrentCamera
-        if cam then
-            for _, v in ipairs(cam:GetChildren()) do
-                if v:IsA("PostEffect") then v.Enabled = false end
-            end
-        end
         local pg = LP:FindFirstChild("PlayerGui")
         if pg then
             local main = pg:FindFirstChild("Main")
-            if main and main:FindFirstChild("Notifications") then main.Notifications.Visible = false end
+            if main then
+                if main:FindFirstChild("Notifications") then main.Notifications.Visible = false end
+                if main:FindFirstChild("LevelUp") then main.LevelUp.Visible = false end
+            end
+            -- ปิด ScreenGui ที่มีคำว่า Flash หรือ White
             for _, gui in ipairs(pg:GetChildren()) do
-                if gui:IsA("ScreenGui") and (gui.Name:find("Level") or gui.Name:find("Notice")) then gui.Enabled = false end
+                if gui:IsA("ScreenGui") and (gui.Name:find("Flash") or gui.Name:find("White")) then
+                    gui.Enabled = false
+                end
             end
         end
     end)
@@ -809,8 +823,16 @@ end
 local function restoreEffects()
     if effectRemoverConn then effectRemoverConn:Disconnect() effectRemoverConn = nil end
     if effectAddedConn then effectAddedConn:Disconnect() effectAddedConn = nil end
+
+    -- คืนค่าแสง
     Lighting.Brightness = 2
     Lighting.GlobalShadows = true
+
+    -- คืนค่าเอฟเฟคทั้งแมพ
+    for _, v in ipairs(game:GetDescendants()) do
+        toggleEffect(v, true)
+    end
+
     local pg = LP:FindFirstChild("PlayerGui")
     if pg then
         local main = pg:FindFirstChild("Main")
@@ -974,7 +996,7 @@ local function bringAndModifyMobs(mobName, mobLockPos)
 end
 
 ------------------------------------------------------------------------
--- FARM LOOP (Logic เดิม 100%)
+-- FARM LOOP
 ------------------------------------------------------------------------
 local function startFarmLoop()
     if farmLoopConn then farmLoopConn:Disconnect() end
@@ -1094,7 +1116,7 @@ local function stopFarmLoop()
 end
 
 ------------------------------------------------------------------------
--- SSS1 CORE (Combat เดิม 100%)
+-- SSS1 CORE
 ------------------------------------------------------------------------
 getgenv().UFO_Data = {
     CurrentKey = "6038e23a",
@@ -1171,7 +1193,7 @@ RunService.Stepped:Connect(function()
 end)
 
 ------------------------------------------------------------------------
--- UI GENERATION (เดิม 100%)
+-- UI GENERATION
 ------------------------------------------------------------------------
 local layout = scroll:FindFirstChildOfClass("UIListLayout") or Instance.new("UIListLayout",scroll)
 layout.Padding = UDim.new(0,12)
@@ -1233,14 +1255,14 @@ btn.MouseButton1Click:Connect(function()
         startHold()
         startDisableDialogue()
         startFarmLoop()
-        startEffectRemover() -- เรียกใช้ระบบลบเอฟเฟค
+        startEffectRemover() -- เปิดแล้วปิดเอฟเฟคทันที
     else
         hasSetSpawnThisSession = false 
         isResettingForSpawn = false 
         stopHold()
         stopDisableDialogue()
         stopFarmLoop()
-        restoreEffects() -- คืนค่าเอฟเฟค
+        restoreEffects() -- ปิดแล้วทุกอย่างกลับมาเหมือนเดิม
         setDialogueVisible(true)
     end
 end)
