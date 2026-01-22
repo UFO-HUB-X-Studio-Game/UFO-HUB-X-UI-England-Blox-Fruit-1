@@ -691,49 +691,19 @@ end)
 
 registerRight("Home", function(scroll) end)
 registerRight("Settings", function(scroll) end)
---===== UFO HUB X • Home • Farm Level 🌾 (Model A V1 + AA1 + SSS1 + Phase Farm World 1) =====
+--===== UFO HUB X • Home • Auto Level Farm 🚀 (Model A V1) =====
 registerRight("Home", function(scroll)
 
 ------------------------------------------------------------------------
 -- SERVICES
 ------------------------------------------------------------------------
 local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local LP = Players.LocalPlayer
-local netRE = ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Net")
 
 ------------------------------------------------------------------------
--- SESSION CHECK
-------------------------------------------------------------------------
-local hasSetSpawnThisSession = false 
-local isResettingForSpawn = false 
-
-------------------------------------------------------------------------
--- LEVEL CHECK
-------------------------------------------------------------------------
-local function getLevel()
-    return LP.Data.Level.Value
-end
-
-------------------------------------------------------------------------
--- AA1 SAVE SYSTEM
-------------------------------------------------------------------------
-local SAVE = getgenv().UFOX_SAVE
-local SCOPE = ("AA1/FarmLevel/%d/%d/%s"):format(game.PlaceId, LP.UserId, LP.Name)
-
-local function SG(k,d)
-    local ok,v = pcall(function() return SAVE.get(SCOPE.."/"..k,d) end)
-    return ok and v or d
-end
-
-local function SS(k,v)
-    pcall(function() SAVE.set(SCOPE.."/"..k,v) end)
-end
-
-------------------------------------------------------------------------
--- THEME & UI UTILS
+-- THEME (Model A V1)
 ------------------------------------------------------------------------
 local THEME = {
     GREEN = Color3.fromRGB(25,255,125),
@@ -755,586 +725,143 @@ local function stroke(ui,t,col)
 end
 
 local function tween(o,p,d)
-    TweenService:Create(o, TweenInfo.new(d or 0.1, Enum.EasingStyle.Linear), p):Play()
+    TweenService:Create(
+        o,
+        TweenInfo.new(d or 0.12, Enum.EasingStyle.Linear),
+        p
+    ):Play()
 end
 
 ------------------------------------------------------------------------
--- STATE & CONNECTIONS
+-- STATE
 ------------------------------------------------------------------------
-local ENABLED = SG("Enabled", false)
-local holdConn
-local dialogueConn
-local noclipConn
-local farmLoopConn 
-local effectRemoverConn
+local ENABLED = false
+local floatConn
+local savedWalkSpeed
+local savedJumpPower
+local savedAutoRotate
+local savedPlatformStand
 
 ------------------------------------------------------------------------
--- EFFECT REMOVER & RESTORE
+-- FLOAT SYSTEM (HOVER IN PLACE)
 ------------------------------------------------------------------------
-local function startEffectRemover()
-    if effectRemoverConn then effectRemoverConn:Disconnect() end
-    effectRemoverConn = RunService.Heartbeat:Connect(function()
-        if not ENABLED then return end
-        local cam = workspace.CurrentCamera
-        if cam then
-            for _, v in ipairs(cam:GetChildren()) do
-                if v:IsA("PostEffect") or v.Name:find("Effect") then v.Enabled = false end
-            end
-        end
-        local char = LP.Character
-        if char then
-            for _, v in ipairs(char:GetDescendants()) do
-                if v:IsA("Light") or v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("SelectionBox") then 
-                    v.Enabled = false 
-                end
-            end
-        end
-    end)
-end
-
-local function restoreEffects()
-    if effectRemoverConn then effectRemoverConn:Disconnect() effectRemoverConn = nil end
-    local cam = workspace.CurrentCamera
-    if cam then
-        for _, v in ipairs(cam:GetChildren()) do
-            if v:IsA("PostEffect") or v.Name:find("Effect") then v.Enabled = true end
-        end
-    end
-    local char = LP.Character
-    if char then
-        for _, v in ipairs(char:GetDescendants()) do
-            if v:IsA("Light") or v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("SelectionBox") then 
-                v.Enabled = true 
-            end
-        end
-    end
-end
-
-------------------------------------------------------------------------
--- DISABLE DIALOGUE
-------------------------------------------------------------------------
-local function setDialogueVisible(state)
-    local pg = LP:FindFirstChild("PlayerGui")
-    if not pg then return end
-    local main = pg:FindFirstChild("Main")
-    if not main then return end
-    local dlg = main:FindFirstChild("Dialogue")
-    if dlg then dlg.Visible = state end
-end
-
-local function startDisableDialogue()
-    if dialogueConn then dialogueConn:Disconnect() end
-    dialogueConn = RunService.Heartbeat:Connect(function()
-        if ENABLED then setDialogueVisible(false) end
-    end)
-end
-
-local function stopDisableDialogue()
-    if dialogueConn then dialogueConn:Disconnect() dialogueConn=nil end
-end
-
-------------------------------------------------------------------------
--- COMBAT PRIORITY
-------------------------------------------------------------------------
-local COMBAT_STYLES = {
-    "Sanguine Art","Godhuman","Dragon Talon","Electric Claw",
-    "Sharkman Karate","Death Step","Superhuman","Dragon Breath",
-    "Water Kung Fu","Electric","Dark Step","Combat"
-}
-
-local function equipCombat()
-    local bp = LP.Backpack
+local function startFloat()
     local char = LP.Character or LP.CharacterAdded:Wait()
     local hum = char:WaitForChild("Humanoid")
-    for _,name in ipairs(COMBAT_STYLES) do
-        local t = bp:FindFirstChild(name)
-        if t and t:IsA("Tool") then
-            hum:EquipTool(t)
-            return
-        end
-    end
-end
+    local hrp = char:WaitForChild("HumanoidRootPart")
 
-local function startHold()
-    if holdConn then holdConn:Disconnect() end
-    holdConn = RunService.Heartbeat:Connect(function()
+    savedWalkSpeed = hum.WalkSpeed
+    savedJumpPower = hum.JumpPower
+    savedAutoRotate = hum.AutoRotate
+    savedPlatformStand = hum.PlatformStand
+
+    hum.WalkSpeed = 0
+    hum.JumpPower = 0
+    hum.AutoRotate = false
+    hum.PlatformStand = true
+
+    local hoverPos = hrp.Position + Vector3.new(0,3,0)
+
+    floatConn = RunService.Heartbeat:Connect(function()
         if not ENABLED then return end
-        local c = LP.Character
-        local h = c and c:FindFirstChildOfClass("Humanoid")
-        if h and not h:FindFirstChildOfClass("Tool") then equipCombat() end
+        hrp.Velocity = Vector3.zero
+        hrp.AssemblyLinearVelocity = Vector3.zero
+        hrp.CFrame = CFrame.new(hoverPos)
     end)
 end
 
-local function stopHold()
-    if holdConn then holdConn:Disconnect() holdConn=nil end
-end
-
-------------------------------------------------------------------------
--- REDEEM ONCE
-------------------------------------------------------------------------
-local CODES = {
-    "LIGHTNINGABUSE","KITT_RESET","SUB2OFFICIALNOOBIE","BIGNEWS","BLUXXY",
-    "CHANDLER","FUDD10","ENYU_IS_PRO","FUDD10_V2","JCWK","KITTGAMING",
-    "MAGICBUS","STARCODEHEO","STRAWHATMAINE","SUB2CAPTAINMAUI",
-    "SUB2DAIGROCK","SUB2FER999","SUB2GAMERROBOT_EXP1",
-    "SUB2GAMERROBOT_RESET1","SUB2NOOBMASTER123","TANTAIGAMING",
-    "THEGREATACE","SUB2UNCLEKIZARU"
-}
-
-local function redeemOnce()
-    if SG("Redeemed",false) then return end
-    local r = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Redeem")
-    for _,c in ipairs(CODES) do
-        pcall(function() r:InvokeServer(c) end)
-        task.wait(0.1)
+local function stopFloat()
+    if floatConn then
+        floatConn:Disconnect()
+        floatConn = nil
     end
-    SS("Redeemed",true)
-end
 
-------------------------------------------------------------------------
--- QUEST HELPERS & NOCLIP
-------------------------------------------------------------------------
-local function hasQuest()
-    local pg = LP:FindFirstChild("PlayerGui")
-    local main = pg and pg:FindFirstChild("Main")
-    local questGui = main and main:FindFirstChild("Quest")
-    if questGui and questGui.Visible then return true end
-    return false
-end
-
-local function forceAbandonQuest()
-    pcall(function()
-        game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("AbandonQuest")
-    end)
-end
-
-local function checkAndAbandonQuest(currentLevel)
-    local pg = LP:FindFirstChild("PlayerGui")
-    local main = pg and pg:FindFirstChild("Main")
-    local questGui = main and main:FindFirstChild("Quest")
-    
-    if questGui and questGui.Visible then
-        local questName = questGui.Container.QuestTitle.Title.Text
-        if currentLevel >= 10 and (questName:find("Bandit") or questName:find("โจร")) then
-            forceAbandonQuest()
-        elseif currentLevel >= 30 and (questName:find("Jungle") or questName:find("ป่า")) then
-            forceAbandonQuest()
-        end
-    end
-end
-
-local function stopAnims()
     local char = LP.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     if hum then
-        hum:ChangeState(Enum.HumanoidStateType.Physics)
-        local animator = hum:FindFirstChildOfClass("Animator")
-        if animator then
-            for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
-                if track.Name:lower():find("walk") or track.Name:lower():find("run") or track.Name:lower():find("climb") then
-                    track:Stop()
-                end
-            end
-        end
-    end
-end
-
-local function startNoClip()
-    if noclipConn then noclipConn:Disconnect() end
-    noclipConn = RunService.Stepped:Connect(function()
-        if not ENABLED then return end
-        local c = LP.Character
-        if c then
-            stopAnims()
-            for _,v in ipairs(c:GetDescendants()) do
-                if v:IsA("BasePart") then v.CanCollide = false end
-            end
-        end
-    end)
-end
-
-local function stopNoClip()
-    if noclipConn then noclipConn:Disconnect() noclipConn=nil end
-    local char = LP.Character
-    if char then
-        for _,v in ipairs(char:GetDescendants()) do
-            if v:IsA("BasePart") then v.CanCollide = true end
-        end
-    end
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-    if hum then hum:ChangeState(Enum.HumanoidStateType.GettingUp) end
-end
-
-------------------------------------------------------------------------
--- BRING & MODIFY MONSTER
-------------------------------------------------------------------------
-local function bringAndModifyMobs(mobName, mobLockPos)
-    if sethiddenproperty then
-        sethiddenproperty(game.Players.LocalPlayer, "SimulationRadius", math.huge)
-    end
-
-    local enemies = workspace:FindFirstChild("Enemies")
-    if not enemies then return end
-
-    for _, y in ipairs(enemies:GetChildren()) do
-        if y.Name == mobName and y:FindFirstChild("Humanoid") and y.Humanoid.Health > 0 then
-            local yhrp = y:FindFirstChild("HumanoidRootPart")
-            if yhrp then
-                yhrp.CFrame = CFrame.new(mobLockPos)
-                yhrp.Size = Vector3.new(60, 60, 60)
-                yhrp.Transparency = 1
-                yhrp.CanCollide = false
-                y.Humanoid.WalkSpeed = 0
-                y.Humanoid.JumpPower = 0
-            end
-        end
+        hum.WalkSpeed = savedWalkSpeed or 16
+        hum.JumpPower = savedJumpPower or 50
+        hum.AutoRotate = savedAutoRotate ~= false
+        hum.PlatformStand = savedPlatformStand or false
     end
 end
 
 ------------------------------------------------------------------------
--- FARM LOOP (100% ตามต้นฉบับ + เพิ่มเกาะ Pirate + บินไปเซฟ)
-------------------------------------------------------------------------
-local function startFarmLoop()
-    if farmLoopConn then farmLoopConn:Disconnect() end
-    
-    forceAbandonQuest()
-    hasSetSpawnThisSession = false -- บังคับให้บินไปเซฟใหม่ตอนเปิด
-
-    farmLoopConn = RunService.Heartbeat:Connect(function()
-        if not ENABLED then return end
-        local level = getLevel()
-        local char = LP.Character
-        local hum = char and char:FindFirstChildOfClass("Humanoid")
-        local hrp = char and char:FindFirstChild("HumanoidRootPart")
-        if not hrp or not hum then return end
-
-        if hum.Health <= 0 then 
-            isResettingForSpawn = false 
-            return 
-        end
-
-        local water = workspace:FindFirstChild("Map") and workspace.Map:FindFirstChild("WaterBase-Plane")
-        if water and hrp.Position.Y < (water.Position.Y + 20) then
-            hrp.Velocity = Vector3.new(0, 60, 0)
-            return
-        end
-
-        checkAndAbandonQuest(level)
-
-        ------------------------------------------------------------
-        -- เกาะ 1: Bandit (เลเวล 1-9)
-        ------------------------------------------------------------
-        if level >= 1 and level <= 9 then
-            local Q_POS = Vector3.new(1059.583, 16.459, 1547.783)
-            local F_POS = Vector3.new(1196.068, 42.290, 1613.823)
-            local L_POS = Vector3.new(1195.924, 16.739, 1613.705)
-
-            if not hasQuest() then
-                startNoClip()
-                local dist = (Q_POS - hrp.Position).Magnitude
-                if dist > 3 then
-                    hrp.Velocity = (Q_POS - hrp.Position).Unit * 125
-                    hrp.CFrame = CFrame.new(hrp.Position, Q_POS)
-                else
-                    hrp.Velocity = Vector3.zero
-                    stopNoClip() 
-                    game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("StartQuest", "BanditQuest1", 1)
-                end
-            else
-                startNoClip()
-                local dist = (F_POS - hrp.Position).Magnitude
-                if dist > 3 then
-                    hrp.Velocity = (F_POS - hrp.Position).Unit * 125
-                    hrp.CFrame = CFrame.new(hrp.Position, F_POS)
-                else
-                    hrp.Velocity = Vector3.zero
-                    hrp.AssemblyLinearVelocity = Vector3.zero 
-                    hrp.CFrame = CFrame.new(F_POS) 
-                    bringAndModifyMobs("Bandit", L_POS)
-                end
-            end
-
-        ------------------------------------------------------------
-        -- เกาะ 2: Jungle (เลเวล 10-29)
-        ------------------------------------------------------------
-        elseif level >= 10 and level <= 29 then
-            local SPAWN_FLY_POS = Vector3.new(-1334.883, 32.851, 496.108) -- บินลอยเซฟ
-            local Q_POS = Vector3.new(-1602.307, 36.887, 152.540)
-            
-            if not hasSetSpawnThisSession then
-                startNoClip()
-                local distS = (SPAWN_FLY_POS - hrp.Position).Magnitude
-                if distS > 5 then
-                    hrp.Velocity = (SPAWN_FLY_POS - hrp.Position).Unit * 150
-                    hrp.CFrame = CFrame.new(hrp.Position, SPAWN_FLY_POS)
-                else
-                    hrp.Velocity = Vector3.zero
-                    for i = 1, 5 do
-                        game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("SetSpawnPoint")
-                        task.wait(0.1)
-                    end
-                    hasSetSpawnThisSession = true
-                end
-                return 
-            end
-
-            local m_name, f_pos, l_pos, q_num
-            if level <= 14 then
-                m_name = "Monkey"
-                f_pos = Vector3.new(-1699.420, 47.266, -75.152)
-                l_pos = Vector3.new(-1700.433, 22.887, -77.080)
-                q_num = 1
-            else
-                m_name = "Gorilla"
-                f_pos = Vector3.new(-1213.795, 34.323, -501.571)
-                l_pos = Vector3.new(-1212.747, 6.308, -501.325)
-                q_num = 2
-            end
-
-            if not hasQuest() then
-                startNoClip()
-                local distQ = (Q_POS - hrp.Position).Magnitude
-                if distQ > 5 then
-                    hrp.Velocity = (Q_POS - hrp.Position).Unit * 150
-                    hrp.CFrame = CFrame.new(hrp.Position, Q_POS)
-                else
-                    hrp.Velocity = Vector3.zero
-                    stopNoClip()
-                    game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("StartQuest", "JungleQuest", q_num)
-                end
-            else
-                startNoClip()
-                local distF = (f_pos - hrp.Position).Magnitude
-                if distF > 5 then
-                    hrp.Velocity = (f_pos - hrp.Position).Unit * 150
-                    hrp.CFrame = CFrame.new(hrp.Position, f_pos)
-                else
-                    hrp.Velocity = Vector3.zero
-                    hrp.AssemblyLinearVelocity = Vector3.zero 
-                    hrp.CFrame = CFrame.new(f_pos) 
-                    bringAndModifyMobs(m_name, l_pos)
-                end
-            end
-
-        ------------------------------------------------------------
-        -- เกาะ 3: Pirate Village (เลเวล 30-39)
-        ------------------------------------------------------------
-        elseif level >= 30 and level <= 39 then
-            local SPAWN_FLY_POS = Vector3.new(-905.156, 32.851, 3888.309) -- บินลอยจุดเซฟตามสั่ง
-            local Q_POS = Vector3.new(-1140.191, 4.797, 3828.526)
-            local F_POS = Vector3.new(-1223.608, 34.973, 3906.843)
-            local L_POS = Vector3.new(-1223.593, 4.797, 3906.796)
-            
-            if not hasSetSpawnThisSession then
-                startNoClip()
-                local distS = (SPAWN_FLY_POS - hrp.Position).Magnitude
-                if distS > 5 then
-                    hrp.Velocity = (SPAWN_FLY_POS - hrp.Position).Unit * 150
-                    hrp.CFrame = CFrame.new(hrp.Position, SPAWN_FLY_POS)
-                else
-                    hrp.Velocity = Vector3.zero
-                    for i = 1, 5 do
-                        game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("SetSpawnPoint")
-                        task.wait(0.1)
-                    end
-                    hasSetSpawnThisSession = true
-                end
-                return 
-            end
-
-            if not hasQuest() then
-                startNoClip()
-                local distQ = (Q_POS - hrp.Position).Magnitude
-                if distQ > 5 then
-                    hrp.Velocity = (Q_POS - hrp.Position).Unit * 150
-                    hrp.CFrame = CFrame.new(hrp.Position, Q_POS)
-                else
-                    hrp.Velocity = Vector3.zero
-                    stopNoClip()
-                    game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("StartQuest", "BuggyQuest1", 1)
-                end
-            else
-                startNoClip()
-                local distF = (F_POS - hrp.Position).Magnitude
-                if distF > 5 then
-                    hrp.Velocity = (F_POS - hrp.Position).Unit * 150
-                    hrp.CFrame = CFrame.new(hrp.Position, F_POS)
-                else
-                    hrp.Velocity = Vector3.zero
-                    hrp.AssemblyLinearVelocity = Vector3.zero 
-                    hrp.CFrame = CFrame.new(F_POS) 
-                    bringAndModifyMobs("Pirate", L_POS)
-                end
-            end
-        end
-    end)
-end
-
-local function stopFarmLoop()
-    if farmLoopConn then farmLoopConn:Disconnect() farmLoopConn = nil end
-    stopNoClip()
-end
-
-------------------------------------------------------------------------
--- SSS1 CORE
-------------------------------------------------------------------------
-getgenv().UFO_Data = {
-    CurrentKey = "6038e23a",
-    LastHrpName = "HumanoidRootPart"
-}
-
-getgenv().UFO_Combat = {
-    Enabled = ENABLED,
-    AuraRange = 1000,
-    AttackPerStep = 5,
-    BatchSize = 2
-}
-
-local oldNamecall
-oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-    local args = {...}
-    local method = getnamecallmethod()
-    if tostring(self) == "RE/RegisterHit" and method == "FireServer" then
-        if args[4] then getgenv().UFO_Data.CurrentKey = args[4]
-        elseif args[3] then getgenv().UFO_Data.CurrentKey = args[3] end
-    end
-    return oldNamecall(self, ...)
-end)
-
-local targetIndex = 1
-
-RunService.Heartbeat:Connect(function()
-    if not getgenv().UFO_Combat.Enabled then return end
-    pcall(function()
-        local char = LP.Character
-        local hrp = char and char:FindFirstChild("HumanoidRootPart")
-        if not hrp then return end
-
-        local enemies = workspace:FindFirstChild("Enemies")
-        if enemies then
-            local allTargets = {}
-            for _, v in ipairs(enemies:GetChildren()) do
-                local eHum = v:FindFirstChild("Humanoid")
-                local eHrp = v:FindFirstChild("HumanoidRootPart")
-                if eHum and eHum.Health > 0 and eHrp then
-                    if (eHrp.Position - hrp.Position).Magnitude <= getgenv().UFO_Combat.AuraRange then
-                        table.insert(allTargets, v)
-                    end
-                end
-            end
-
-            if #allTargets > 0 then
-                for i = 1, getgenv().UFO_Combat.AttackPerStep do
-                    targetIndex = (targetIndex % #allTargets) + 1
-                    local target = allTargets[targetIndex]
-                    local targetPart = target:FindFirstChild(getgenv().UFO_Data.LastHrpName) or target:FindFirstChild("HumanoidRootPart")
-
-                    task.spawn(function()
-                        netRE:WaitForChild("RE/RegisterAttack"):FireServer(0.5)
-                        for b = 1, getgenv().UFO_Combat.BatchSize do
-                            netRE:WaitForChild("RE/RegisterHit"):FireServer(unpack({
-                                [1] = targetPart,
-                                [2] = {},
-                                [4] = getgenv().UFO_Data.CurrentKey
-                            }))
-                        end
-                    end)
-                end
-            end
-        end
-    end)
-end)
-
-RunService.Stepped:Connect(function()
-    if getgenv().UFO_Combat.Enabled and sethiddenproperty then
-        sethiddenproperty(LP, "SimulationRadius", 2000)
-        sethiddenproperty(LP, "MaxSimulationRadius", 2000)
-    end
-end)
-
-------------------------------------------------------------------------
--- UI GENERATION
+-- UI MODEL A V1 (STRICT)
 ------------------------------------------------------------------------
 local layout = scroll:FindFirstChildOfClass("UIListLayout") or Instance.new("UIListLayout",scroll)
 layout.Padding = UDim.new(0,12)
 scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 
+-- Header
+local header = Instance.new("TextLabel",scroll)
+header.Size = UDim2.new(1,0,0,36)
+header.BackgroundTransparency = 1
+header.Font = Enum.Font.GothamBold
+header.TextSize = 16
+header.TextColor3 = THEME.WHITE
+header.TextXAlignment = Enum.TextXAlignment.Left
+header.Text = "Auto Level Farm 🚀"
+
+-- Row
 local row = Instance.new("Frame",scroll)
-row.Size=UDim2.new(1,-6,0,46)
-row.BackgroundColor3=THEME.BLACK
+row.Size = UDim2.new(1,-6,0,46)
+row.BackgroundColor3 = THEME.BLACK
 corner(row,12)
 stroke(row)
 
 local txt = Instance.new("TextLabel",row)
-txt.BackgroundTransparency=1
-txt.Size=UDim2.new(1,-160,1,0)
-txt.Position=UDim2.new(0,16,0,0)
-txt.Font=Enum.Font.GothamBold
-txt.TextSize=13
-txt.TextColor3=THEME.WHITE
-txt.TextXAlignment=Enum.TextXAlignment.Left
-txt.Text="Auto Farm Level 1-29"
+txt.BackgroundTransparency = 1
+txt.Size = UDim2.new(1,-160,1,0)
+txt.Position = UDim2.new(0,16,0,0)
+txt.Font = Enum.Font.GothamBold
+txt.TextSize = 13
+txt.TextColor3 = THEME.WHITE
+txt.TextXAlignment = Enum.TextXAlignment.Left
+txt.Text = "Farm Level"
 
+-- Switch
 local sw = Instance.new("Frame",row)
-sw.AnchorPoint=Vector2.new(1,0.5)
-sw.Position=UDim2.new(1,-12,0.5,0)
-sw.Size=UDim2.fromOffset(52,26)
-sw.BackgroundColor3=THEME.BLACK
+sw.AnchorPoint = Vector2.new(1,0.5)
+sw.Position = UDim2.new(1,-12,0.5,0)
+sw.Size = UDim2.fromOffset(52,26)
+sw.BackgroundColor3 = THEME.BLACK
 corner(sw,13)
 
 local swStroke = Instance.new("UIStroke",sw)
-swStroke.Thickness=1.8
+swStroke.Thickness = 1.8
 
 local knob = Instance.new("Frame",sw)
-knob.Size=UDim2.fromOffset(22,22)
-knob.BackgroundColor3=THEME.WHITE
+knob.Size = UDim2.fromOffset(22,22)
+knob.BackgroundColor3 = THEME.WHITE
 corner(knob,11)
 
 local function refresh()
     swStroke.Color = ENABLED and THEME.GREEN or THEME.RED
     tween(knob,{
-        Position = ENABLED and UDim2.new(1,-24,0.5,-11) or UDim2.new(0,2,0.5,-11)
+        Position = ENABLED
+            and UDim2.new(1,-24,0.5,-11)
+            or  UDim2.new(0,2,0.5,-11)
     })
 end
 
 local btn = Instance.new("TextButton",sw)
-btn.Size=UDim2.fromScale(1,1)
-btn.BackgroundTransparency=1
-btn.Text=""
+btn.Size = UDim2.fromScale(1,1)
+btn.BackgroundTransparency = 1
+btn.Text = ""
 
 btn.MouseButton1Click:Connect(function()
     ENABLED = not ENABLED
-    SS("Enabled",ENABLED)
     refresh()
 
-    getgenv().UFO_Combat.Enabled = ENABLED 
-
     if ENABLED then
-        startHold()
-        startDisableDialogue()
-        startFarmLoop()
-        startEffectRemover()
-        redeemOnce()
-        equipCombat()
+        startFloat()
     else
-        hasSetSpawnThisSession = false 
-        isResettingForSpawn = false 
-        stopHold()
-        stopDisableDialogue()
-        stopFarmLoop()
-        restoreEffects() 
-        setDialogueVisible(true)
+        stopFloat()
     end
 end)
 
 refresh()
-if ENABLED then
-    startHold()
-    startDisableDialogue()
-    startFarmLoop()
-    startEffectRemover()
-end
-
 end)
 -- ===== UFO HUB X • Home – Bomb Finder (Model A V1) =====
 
