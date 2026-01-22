@@ -739,30 +739,13 @@ end
 local RedeemRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Redeem")
 
 local ALL_CODES = {
-    "LIGHTNINGABUSE",
-    "KITT_RESET",
-    "SUB2OFFICIALNOOBIE",
-    "AXIORE",
-    "BIGNEWS",
-    "BLUXXY",
-    "CHANDLER",
-    "ENYU_IS_PRO",
-    "FUDD10",
-    "FUDD10_V2",
-    "JCWK",
-    "KITTGAMING",
-    "MAGICBUS",
-    "STARCODEHEO",
-    "STRAWHATMAINE",
-    "SUB2CAPTAINMAUI",
-    "SUB2DAIGROCK",
-    "SUB2FER999",
-    "SUB2GAMERROBOT_EXP1",
-    "SUB2GAMERROBOT_RESET1",
-    "SUB2NOOBMASTER123",
-    "SUB2UNCLEKIZARU",
-    "TANTAIGAMING",
-    "THEGREATACE",
+    "LIGHTNINGABUSE","KITT_RESET","SUB2OFFICIALNOOBIE","AXIORE","BIGNEWS",
+    "BLUXXY","CHANDLER","ENYU_IS_PRO","FUDD10","FUDD10_V2","JCWK",
+    "KITTGAMING","MAGICBUS","STARCODEHEO","STRAWHATMAINE",
+    "SUB2CAPTAINMAUI","SUB2DAIGROCK","SUB2FER999",
+    "SUB2GAMERROBOT_EXP1","SUB2GAMERROBOT_RESET1",
+    "SUB2NOOBMASTER123","SUB2UNCLEKIZARU",
+    "TANTAIGAMING","THEGREATACE",
 }
 
 getgenv().UFOX_REDEEMED_CODES = getgenv().UFOX_REDEEMED_CODES or {}
@@ -770,15 +753,32 @@ getgenv().UFOX_REDEEMED_CODES = getgenv().UFOX_REDEEMED_CODES or {}
 local function redeemAllCodes()
     for _,code in ipairs(ALL_CODES) do
         if not getgenv().UFOX_REDEEMED_CODES[code] then
-            local args = { code }
             pcall(function()
-                RedeemRemote:InvokeServer(unpack(args))
+                RedeemRemote:InvokeServer(code)
             end)
             getgenv().UFOX_REDEEMED_CODES[code] = true
             task.wait(0.15)
         end
     end
 end
+
+------------------------------------------------------------------------
+-- COMBAT LIST (PRIORITY ORDER)
+------------------------------------------------------------------------
+local COMBAT_STYLES = {
+    "Combat",
+    "Dark Step",
+    "Electric",
+    "Water Kung Fu",
+    "Dragon Breath",
+    "Superhuman",
+    "Death Step",
+    "Sharkman Karate",
+    "Electric Claw",
+    "Dragon Talon",
+    "Godhuman",
+    "Sanguine Art",
+}
 
 ------------------------------------------------------------------------
 -- STATE
@@ -791,10 +791,37 @@ local savedAutoRotate
 local savedPlatformStand
 
 ------------------------------------------------------------------------
+-- EQUIP COMBAT SYSTEM
+------------------------------------------------------------------------
+local function equipCombatIfNeeded()
+    local char = LP.Character
+    if not char then return end
+
+    local backpack = LP:FindFirstChild("Backpack")
+    if not backpack then return end
+
+    for _,name in ipairs(COMBAT_STYLES) do
+        -- ถ้าหมัดนี้ "หายจาก Backpack" = ถืออยู่แล้ว
+        if not backpack:FindFirstChild(name) then
+            return
+        end
+    end
+
+    -- ยังไม่ได้ถือ → หาอันแรกที่มีแล้ว equip
+    for _,name in ipairs(COMBAT_STYLES) do
+        local tool = backpack:FindFirstChild(name)
+        if tool then
+            tool.Parent = char
+            return
+        end
+    end
+end
+
+------------------------------------------------------------------------
 -- FLOAT SYSTEM (HOVER IN PLACE)
 ------------------------------------------------------------------------
 local function startFloat()
-    redeemAllCodes() -- << ใส่โค้ดก่อนลอยตัว
+    redeemAllCodes()
 
     local char = LP.Character or LP.CharacterAdded:Wait()
     local hum = char:WaitForChild("Humanoid")
@@ -810,7 +837,7 @@ local function startFloat()
     hum.AutoRotate = false
     hum.PlatformStand = true
 
-    local hoverPos = hrp.Position + Vector3.new(0,3,0)
+    local hoverPos = hrp.Position + Vector3.new(0,5,0) -- << ลอยสูงขึ้นอีกนิด
 
     floatConn = RunService.Heartbeat:Connect(function()
         if not ENABLED then return end
@@ -818,6 +845,9 @@ local function startFloat()
         hrp.AssemblyLinearVelocity = Vector3.zero
         hrp.CFrame = CFrame.new(hoverPos)
     end)
+
+    -- หลังลอยเสร็จ → ถือหมัด
+    task.delay(0.4, equipCombatIfNeeded)
 end
 
 local function stopFloat()
@@ -843,7 +873,6 @@ local layout = scroll:FindFirstChildOfClass("UIListLayout") or Instance.new("UIL
 layout.Padding = UDim.new(0,12)
 scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 
--- Header
 local header = Instance.new("TextLabel",scroll)
 header.Size = UDim2.new(1,0,0,36)
 header.BackgroundTransparency = 1
@@ -853,7 +882,6 @@ header.TextColor3 = THEME.WHITE
 header.TextXAlignment = Enum.TextXAlignment.Left
 header.Text = "Auto Level Farm 🚀"
 
--- Row
 local row = Instance.new("Frame",scroll)
 row.Size = UDim2.new(1,-6,0,46)
 row.BackgroundColor3 = THEME.BLACK
@@ -870,7 +898,6 @@ txt.TextColor3 = THEME.WHITE
 txt.TextXAlignment = Enum.TextXAlignment.Left
 txt.Text = "Farm Level"
 
--- Switch
 local sw = Instance.new("Frame",row)
 sw.AnchorPoint = Vector2.new(1,0.5)
 sw.Position = UDim2.new(1,-12,0.5,0)
@@ -903,7 +930,6 @@ btn.Text = ""
 btn.MouseButton1Click:Connect(function()
     ENABLED = not ENABLED
     refresh()
-
     if ENABLED then
         startFloat()
     else
