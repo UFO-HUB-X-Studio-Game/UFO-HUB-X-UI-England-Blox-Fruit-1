@@ -701,6 +701,7 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local HttpService = game:GetService("HttpService")
 local LP = Players.LocalPlayer
 
 ------------------------------------------------------------------------
@@ -722,19 +723,14 @@ local function stroke(ui,t,col)
     local s = Instance.new("UIStroke",ui)
     s.Thickness = t or 2.2
     s.Color = col or THEME.GREEN
-    s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 end
 
 local function tween(o,p,d)
-    TweenService:Create(
-        o,
-        TweenInfo.new(d or 0.12, Enum.EasingStyle.Linear),
-        p
-    ):Play()
+    TweenService:Create(o,TweenInfo.new(d or 0.12),p):Play()
 end
 
 ------------------------------------------------------------------------
--- REDEEM CODE SYSTEM (MEMORY)
+-- REDEEM CODE SYSTEM (FILE SAVE - DELTA)
 ------------------------------------------------------------------------
 local RedeemRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Redeem")
 
@@ -748,36 +744,35 @@ local ALL_CODES = {
     "TANTAIGAMING","THEGREATACE",
 }
 
-getgenv().UFOX_REDEEMED_CODES = getgenv().UFOX_REDEEMED_CODES or {}
+local FOLDER = "UFO HUB X"
+local FILE = FOLDER.."/redeemed_"..LP.UserId..".json"
 
-local function redeemAllCodes()
-    for _,code in ipairs(ALL_CODES) do
-        if not getgenv().UFOX_REDEEMED_CODES[code] then
-            pcall(function()
-                RedeemRemote:InvokeServer(code)
-            end)
-            getgenv().UFOX_REDEEMED_CODES[code] = true
-            task.wait(0.15)
-        end
+local function redeemAllCodesOnce()
+    if isfolder(FOLDER) == false then
+        makefolder(FOLDER)
     end
+
+    if isfile(FILE) then
+        return -- เคยใส่แล้ว ข้ามทันที
+    end
+
+    for _,code in ipairs(ALL_CODES) do
+        pcall(function()
+            RedeemRemote:InvokeServer(code)
+        end)
+        task.wait(0.15)
+    end
+
+    writefile(FILE, HttpService:JSONEncode({done=true}))
 end
 
 ------------------------------------------------------------------------
--- COMBAT LIST (PRIORITY ORDER)
+-- COMBAT LIST (PRIORITY)
 ------------------------------------------------------------------------
 local COMBAT_STYLES = {
-    "Combat",
-    "Dark Step",
-    "Electric",
-    "Water Kung Fu",
-    "Dragon Breath",
-    "Superhuman",
-    "Death Step",
-    "Sharkman Karate",
-    "Electric Claw",
-    "Dragon Talon",
-    "Godhuman",
-    "Sanguine Art",
+    "Combat","Dark Step","Electric","Water Kung Fu","Dragon Breath",
+    "Superhuman","Death Step","Sharkman Karate","Electric Claw",
+    "Dragon Talon","Godhuman","Sanguine Art",
 }
 
 ------------------------------------------------------------------------
@@ -785,91 +780,97 @@ local COMBAT_STYLES = {
 ------------------------------------------------------------------------
 local ENABLED = false
 local floatConn
-local savedWalkSpeed
-local savedJumpPower
-local savedAutoRotate
-local savedPlatformStand
+local equipConn
+local saved = {}
 
 ------------------------------------------------------------------------
--- EQUIP COMBAT SYSTEM
+-- AUTO EQUIP COMBAT (REAL AUTO)
 ------------------------------------------------------------------------
-local function equipCombatIfNeeded()
-    local char = LP.Character
-    if not char then return end
+local function startAutoEquip()
+    if equipConn then equipConn:Disconnect() end
 
-    local backpack = LP:FindFirstChild("Backpack")
-    if not backpack then return end
+    equipConn = RunService.Heartbeat:Connect(function()
+        if not ENABLED then return end
 
-    for _,name in ipairs(COMBAT_STYLES) do
-        -- ถ้าหมัดนี้ "หายจาก Backpack" = ถืออยู่แล้ว
-        if not backpack:FindFirstChild(name) then
-            return
+        local char = LP.Character
+        local bp = LP:FindFirstChild("Backpack")
+        if not char or not bp then return end
+
+        -- ถ้ามี Tool อยู่ในมือแล้ว = จบ
+        for _,v in ipairs(char:GetChildren()) do
+            if v:IsA("Tool") then
+                return
+            end
         end
-    end
 
-    -- ยังไม่ได้ถือ → หาอันแรกที่มีแล้ว equip
-    for _,name in ipairs(COMBAT_STYLES) do
-        local tool = backpack:FindFirstChild(name)
-        if tool then
-            tool.Parent = char
-            return
+        -- หา Tool ตามลำดับ
+        for _,name in ipairs(COMBAT_STYLES) do
+            local tool = bp:FindFirstChild(name)
+            if tool then
+                tool.Parent = char
+                return
+            end
         end
+    end)
+end
+
+local function stopAutoEquip()
+    if equipConn then
+        equipConn:Disconnect()
+        equipConn = nil
     end
 end
 
 ------------------------------------------------------------------------
--- FLOAT SYSTEM (HOVER IN PLACE)
+-- FLOAT SYSTEM
 ------------------------------------------------------------------------
 local function startFloat()
-    redeemAllCodes()
+    redeemAllCodesOnce()
 
     local char = LP.Character or LP.CharacterAdded:Wait()
     local hum = char:WaitForChild("Humanoid")
     local hrp = char:WaitForChild("HumanoidRootPart")
 
-    savedWalkSpeed = hum.WalkSpeed
-    savedJumpPower = hum.JumpPower
-    savedAutoRotate = hum.AutoRotate
-    savedPlatformStand = hum.PlatformStand
+    saved = {
+        WalkSpeed = hum.WalkSpeed,
+        JumpPower = hum.JumpPower,
+        AutoRotate = hum.AutoRotate,
+        PlatformStand = hum.PlatformStand
+    }
 
     hum.WalkSpeed = 0
     hum.JumpPower = 0
     hum.AutoRotate = false
     hum.PlatformStand = true
 
-    local hoverPos = hrp.Position + Vector3.new(0,5,0) -- << ลอยสูงขึ้นอีกนิด
+    local hoverPos = hrp.Position + Vector3.new(0,6,0)
 
     floatConn = RunService.Heartbeat:Connect(function()
         if not ENABLED then return end
-        hrp.Velocity = Vector3.zero
         hrp.AssemblyLinearVelocity = Vector3.zero
         hrp.CFrame = CFrame.new(hoverPos)
     end)
 
-    -- หลังลอยเสร็จ → ถือหมัด
-    task.delay(0.4, equipCombatIfNeeded)
+    startAutoEquip()
 end
 
 local function stopFloat()
-    if floatConn then
-        floatConn:Disconnect()
-        floatConn = nil
-    end
+    if floatConn then floatConn:Disconnect() floatConn=nil end
+    stopAutoEquip()
 
     local char = LP.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     if hum then
-        hum.WalkSpeed = savedWalkSpeed or 16
-        hum.JumpPower = savedJumpPower or 50
-        hum.AutoRotate = savedAutoRotate ~= false
-        hum.PlatformStand = savedPlatformStand or false
+        for k,v in pairs(saved) do
+            hum[k] = v
+        end
     end
 end
 
 ------------------------------------------------------------------------
--- UI MODEL A V1 (STRICT)
+-- UI MODEL A V1
 ------------------------------------------------------------------------
-local layout = scroll:FindFirstChildOfClass("UIListLayout") or Instance.new("UIListLayout",scroll)
+local layout = Instance.new("UIListLayout",scroll)
 layout.Padding = UDim.new(0,12)
 scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 
@@ -879,7 +880,7 @@ header.BackgroundTransparency = 1
 header.Font = Enum.Font.GothamBold
 header.TextSize = 16
 header.TextColor3 = THEME.WHITE
-header.TextXAlignment = Enum.TextXAlignment.Left
+header.TextXAlignment = Left
 header.Text = "Auto Level Farm 🚀"
 
 local row = Instance.new("Frame",scroll)
@@ -890,54 +891,28 @@ stroke(row)
 
 local txt = Instance.new("TextLabel",row)
 txt.BackgroundTransparency = 1
-txt.Size = UDim2.new(1,-160,1,0)
 txt.Position = UDim2.new(0,16,0,0)
+txt.Size = UDim2.new(1,-160,1,0)
 txt.Font = Enum.Font.GothamBold
 txt.TextSize = 13
 txt.TextColor3 = THEME.WHITE
-txt.TextXAlignment = Enum.TextXAlignment.Left
+txt.TextXAlignment = Left
 txt.Text = "Farm Level"
 
-local sw = Instance.new("Frame",row)
+local sw = Instance.new("TextButton",row)
 sw.AnchorPoint = Vector2.new(1,0.5)
 sw.Position = UDim2.new(1,-12,0.5,0)
 sw.Size = UDim2.fromOffset(52,26)
+sw.Text = ""
 sw.BackgroundColor3 = THEME.BLACK
 corner(sw,13)
+stroke(sw,1.8)
 
-local swStroke = Instance.new("UIStroke",sw)
-swStroke.Thickness = 1.8
-
-local knob = Instance.new("Frame",sw)
-knob.Size = UDim2.fromOffset(22,22)
-knob.BackgroundColor3 = THEME.WHITE
-corner(knob,11)
-
-local function refresh()
-    swStroke.Color = ENABLED and THEME.GREEN or THEME.RED
-    tween(knob,{
-        Position = ENABLED
-            and UDim2.new(1,-24,0.5,-11)
-            or  UDim2.new(0,2,0.5,-11)
-    })
-end
-
-local btn = Instance.new("TextButton",sw)
-btn.Size = UDim2.fromScale(1,1)
-btn.BackgroundTransparency = 1
-btn.Text = ""
-
-btn.MouseButton1Click:Connect(function()
+sw.MouseButton1Click:Connect(function()
     ENABLED = not ENABLED
-    refresh()
-    if ENABLED then
-        startFloat()
-    else
-        stopFloat()
-    end
+    if ENABLED then startFloat() else stopFloat() end
 end)
 
-refresh()
 end)
 -- ===== UFO HUB X • Home – Bomb Finder (Model A V1) =====
 
