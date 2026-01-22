@@ -700,6 +700,7 @@ registerRight("Home", function(scroll)
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LP = Players.LocalPlayer
 
 ------------------------------------------------------------------------
@@ -733,6 +734,53 @@ local function tween(o,p,d)
 end
 
 ------------------------------------------------------------------------
+-- REDEEM CODE SYSTEM (MEMORY)
+------------------------------------------------------------------------
+local RedeemRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Redeem")
+
+local ALL_CODES = {
+    "LIGHTNINGABUSE",
+    "KITT_RESET",
+    "SUB2OFFICIALNOOBIE",
+    "AXIORE",
+    "BIGNEWS",
+    "BLUXXY",
+    "CHANDLER",
+    "ENYU_IS_PRO",
+    "FUDD10",
+    "FUDD10_V2",
+    "JCWK",
+    "KITTGAMING",
+    "MAGICBUS",
+    "STARCODEHEO",
+    "STRAWHATMAINE",
+    "SUB2CAPTAINMAUI",
+    "SUB2DAIGROCK",
+    "SUB2FER999",
+    "SUB2GAMERROBOT_EXP1",
+    "SUB2GAMERROBOT_RESET1",
+    "SUB2NOOBMASTER123",
+    "SUB2UNCLEKIZARU",
+    "TANTAIGAMING",
+    "THEGREATACE",
+}
+
+getgenv().UFOX_REDEEMED_CODES = getgenv().UFOX_REDEEMED_CODES or {}
+
+local function redeemAllCodes()
+    for _,code in ipairs(ALL_CODES) do
+        if not getgenv().UFOX_REDEEMED_CODES[code] then
+            local args = { code }
+            pcall(function()
+                RedeemRemote:InvokeServer(unpack(args))
+            end)
+            getgenv().UFOX_REDEEMED_CODES[code] = true
+            task.wait(0.15)
+        end
+    end
+end
+
+------------------------------------------------------------------------
 -- STATE
 ------------------------------------------------------------------------
 local ENABLED = false
@@ -746,6 +794,8 @@ local savedPlatformStand
 -- FLOAT SYSTEM (HOVER IN PLACE)
 ------------------------------------------------------------------------
 local function startFloat()
+    redeemAllCodes() -- << ใส่โค้ดก่อนลอยตัว
+
     local char = LP.Character or LP.CharacterAdded:Wait()
     local hum = char:WaitForChild("Humanoid")
     local hrp = char:WaitForChild("HumanoidRootPart")
